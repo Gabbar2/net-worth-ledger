@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Net Worth Ledger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f5ef; --surface:#ffffff; --surface-2:#f0ede3; --border:#e2ddce;
+    --ink:#1c1a16; --ink-2:#5c5647; --ink-3:#8b8574;
+    --binance:#b8860b; --okx:#1fa8a0; --manual:#8a7ae8; --cash:#d9526b;
+    --good:#1f8a5a; --bad:#c1364b;
+    --focus:#2b6cb0;
+    --glow: 184,134,11; --glow-opacity:0.16;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#131210; --surface:#1b1916; --surface-2:#211f1a; --border:#33302a;
+      --ink:#f3efe6; --ink-2:#c9c2b2; --ink-3:#8f8877;
+      --binance:#d9a441; --okx:#3fc9c0; --manual:#a596ff; --cash:#e8748c;
+      --glow: 217,164,65; --glow-opacity:0.30;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Source Sans 3",system-ui,-apple-system,Segoe UI,sans-serif;
+    font-size:15px; line-height:1.5;
+    padding-inline:20px; padding-block:28px 80px;
+    position:relative;
+  }
+  .ambient-glow{
+    pointer-events:none; position:fixed; inset:0; z-index:0;
+    background:radial-gradient(120% 60% at 50% -10%, rgba(var(--glow), var(--glow-opacity)) 0%, rgba(var(--glow),0) 70%);
+    animation: ambient-hue-drift 14s ease-in-out infinite;
+  }
+  @keyframes ambient-hue-drift{
+    0%   { filter: hue-rotate(0deg) saturate(1.4); }
+    50%  { filter: hue-rotate(180deg) saturate(2.2); }
+    100% { filter: hue-rotate(360deg) saturate(1.4); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .ambient-glow{ animation:none; }
+  }
+  .wrap{max-width:1180px;margin:0 auto; position:relative; z-index:1;}
+  h1,h2,h3{font-family:"Fraunces",Georgia,serif; font-weight:600; margin:0; text-wrap:balance;}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+  a{color:var(--focus);}
+  button, input, select, textarea{font-family:inherit; font-size:inherit; color:inherit;}
+  :focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+
+  /* header */
+  header.top{display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:22px;}
+  header.top .eyebrow{font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin-bottom:4px;}
+  header.top h1{font-size:28px;}
+  header.top .meta{font-size:13px; color:var(--ink-3);}
+  .currency-toggle{display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;}
+  .currency-toggle button{border:none; background:var(--surface-2); color:var(--ink-2); padding:6px 12px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:"IBM Plex Mono",monospace;}
+  .currency-toggle button + button{border-left:1px solid var(--border);}
+  .currency-toggle button.active{background:var(--ink); color:var(--bg);}
+  .pl-pos{color:var(--good);}
+  .pl-neg{color:var(--bad);}
+  .pl-flat{color:var(--ink-3);}
+  .basis-input{width:80px; padding:4px 6px; border:1px solid var(--border); border-radius:6px 0 0 6px; background:var(--bg); color:var(--ink); font-family:"IBM Plex Mono",monospace; font-size:12.5px; border-right:none;}
+  .basis-cur{padding:4px 4px; border:1px solid var(--border); border-radius:0 6px 6px 0; background:var(--surface-2); color:var(--ink-2); font-size:11.5px;}
+  .basis-group{display:inline-flex;}
+  .open-order-card{display:flex; flex-wrap:wrap; gap:18px; align-items:center; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:14px;}
+  .open-order-card .field-mini{display:flex; flex-direction:column; gap:2px;}
+  .open-order-card .field-mini .k{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3);}
+  .open-order-card .field-mini .v{font-size:14px; font-family:"IBM Plex Mono",monospace;}
+
+  /* hero */
+  .hero{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:26px 28px; margin-bottom:22px;}
+  .hero-top{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:18px;}
+  .hero-pl{padding-inline-start:24px; border-left:1px solid var(--border);}
+  .hero-pl-value{font-size:34px; font-weight:600; line-height:1;}
+  @media (max-width:900px){ .hero-pl{border-left:none; padding-inline-start:0;} }
+  .hero-label{font-size:13px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;}
+  .hero-total{font-size:44px; font-weight:600; line-height:1;}
+  .hero-sub{font-size:13px; color:var(--ink-3); margin-top:6px;}
+  .stat-row{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px;}
+  .stat{background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px;}
+  .stat .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;}
+  .stat .k{font-size:12px; color:var(--ink-2); display:flex; align-items:center;}
+  .stat .v{font-size:18px; font-weight:600; margin-top:3px;}
+  @media (max-width:640px){ .stat-row{grid-template-columns:repeat(2,minmax(0,1fr));} .hero-total{font-size:34px;} }
+
+  /* composition bar */
+  .comp-bar{display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--surface-2); margin-top:14px; border:1px solid var(--border);}
+  .comp-bar span{height:100%;}
+  .legend{display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; font-size:12.5px; color:var(--ink-2);}
+  .legend .item{display:flex; align-items:center; gap:6px;}
+  .legend .sw{width:9px;height:9px;border-radius:2px;}
+
+  /* panels */
+  .panel{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:22px 24px; margin-bottom:20px;}
+  .panel-head{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
+  .panel-head h2{font-size:20px; display:flex; align-items:center; gap:9px;}
+  .panel-head .exchange-dot{width:11px;height:11px;border-radius:50%; display:inline-block;}
+  .panel-head .sub{font-size:12.5px; color:var(--ink-3); font-family:"Source Sans 3",sans-serif; font-weight:400;}
+  .sync-status{font-size:12.5px; color:var(--ink-3);}
+  .sync-status.err{color:var(--bad);}
+  .sync-status.ok{color:var(--good);}
+
+  details.connect{margin-bottom:16px;}
+  details.connect > summary{cursor:pointer; font-size:13px; color:var(--ink-2); list-style:none; display:flex; align-items:center; gap:6px; user-select:none;}
+  details.connect > summary::-webkit-details-marker{display:none;}
+  details.connect > summary::before{content:"▸"; font-size:11px; transition:transform .15s;}
+  details.connect[open] > summary::before{transform:rotate(90deg);}
+  .connect-form{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-top:12px; align-items:end;}
+  .field{display:flex; flex-direction:column; gap:4px;}
+  .field label{font-size:12px; color:var(--ink-2);}
+  .field input, .field select{padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink);}
+  .check{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-2);}
+  .btn{padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--ink); cursor:pointer; font-weight:600; font-size:13.5px;}
+  .btn:hover{filter:brightness(0.97);}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  .btn.primary{background:var(--ink); color:var(--bg); border-color:var(--ink);}
+  .btn.small{padding:5px 10px; font-size:12.5px;}
+  .btn.ghost{background:transparent;}
+  .notice{font-size:12.5px; padding:9px 12px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); margin-top:10px;}
+  .notice.err{background:color-mix(in srgb, var(--bad) 12%, var(--surface)); border-color:color-mix(in srgb, var(--bad) 35%, var(--border)); color:var(--bad);}
+
+  .filters{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; align-items:center;}
+  .filters input, .filters select{padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:var(--surface-2); color:var(--ink); font-size:13px;}
+  .filters .grow{flex:1; min-width:140px;}
+
+  .table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:10px;}
+  table{width:100%; border-collapse:collapse; min-width:520px;}
+  th,td{text-align:left; padding:9px 12px; font-size:13.5px; border-bottom:1px solid var(--border); white-space:nowrap;}
+  th{font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); font-weight:600; background:var(--surface-2);}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--surface-2);}
+  td.num, th.num{text-align:right; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+  .pill{display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:600;}
+  .pill.filled, .pill.salary{background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good);}
+  .pill.live, .pill.partially_filled{background:color-mix(in srgb, var(--focus) 16%, transparent); color:var(--focus);}
+  .pill.canceled, .pill.expense{background:color-mix(in srgb, var(--bad) 16%, transparent); color:var(--bad);}
+  .pill.example{background:var(--surface-2); color:var(--ink-3);}
+  .row-actions{display:flex; gap:6px;}
+  .icon-btn{background:none; border:none; cursor:pointer; color:var(--ink-3); font-size:14px; padding:2px 5px; border-radius:5px;}
+  .icon-btn:hover{color:var(--bad); background:var(--surface-2);}
+  .empty{padding:20px; text-align:center; color:var(--ink-3); font-size:13px;}
+
+  .add-form{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:16px; align-items:end;}
+  .add-form .actions{display:flex; align-items:end;}
+
+  .totals-strip{display:flex; gap:22px; flex-wrap:wrap; margin:14px 0 4px; font-size:13px;}
+  .totals-strip b{font-family:"IBM Plex Mono",monospace;}
+
+  footer{margin-top:30px; font-size:12px; color:var(--ink-3); text-align:center;}
+  footer a{color:var(--ink-3);}
+
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:999px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; z-index:50;}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+</style>
+</head>
+<body>
+<div class="ambient-glow" aria-hidden="true"></div>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="eyebrow">Personal finance console</div>
+      <h1>Net Worth Ledger</h1>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div class="currency-toggle" id="currencyToggle" role="group" aria-label="Display currency">
+        <button type="button" data-cur="USD" class="active">USD</button>
+        <button type="button" data-cur="AED">AED</button>
+        <button type="button" data-cur="PKR">PKR</button>
+      </div>
+      <div class="meta" id="headerMeta">Data lives only in this file's local browser storage.</div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-top">
+      <div>
+        <div class="hero-label">Accumulated total (<span id="heroCurLabel">USD</span>)</div>
+        <div class="hero-total mono" id="heroTotal">$0.00</div>
+        <div class="hero-sub" id="heroSub">Binance + OKX + manual income + net salary/expenses</div>
+      </div>
+      <div class="hero-pl">
+        <div class="hero-label">Unrealized profit / loss</div>
+        <div class="hero-pl-value mono" id="heroPlValue">—</div>
+        <div class="hero-sub" id="heroPlSub">Add entry prices in the tables below</div>
+      </div>
+      <button class="btn primary" id="syncAllBtn">Sync exchanges</button>
+    </div>
+    <div class="comp-bar" id="compBar"></div>
+    <div class="legend" id="compLegend"></div>
+    <div class="stat-row" id="statRow"></div>
+    <div class="stat-row" id="plRow" style="margin-top:10px;"></div>
+  </section>
+
+  <!-- BINANCE -->
+  <section class="panel" id="binancePanel">
+    <div class="panel-head">
+      <h2><span class="exchange-dot" style="background:var(--binance)"></span>Binance <span class="sub" id="binanceSub">samibaigmic@gmail.com</span></h2>
+      <div class="sync-status" id="binanceStatus">Not connected</div>
+    </div>
+
+    <details class="connect" id="binanceConnect" open>
+      <summary>Local proxy connection</summary>
+      <div class="connect-form">
+        <div class="field"><label for="binProxyUrl">Proxy URL</label><input id="binProxyUrl" type="text" placeholder="http://localhost:8787" value="http://localhost:8787"></div>
+        <div><button class="btn primary" id="binSyncBtn">Fetch balances</button> <button class="btn" id="binEntryBtn">Auto-fetch entry prices</button></div>
+      </div>
+      <div class="notice">Binance blocks account requests made directly from a browser, so this reads through the small local proxy script (<code>binance-okx-proxy.py</code>) that runs on your computer and holds your read-only API keys in its own local config file — never in this page, never sent to Claude. Start it with <code>python3 binance-okx-proxy.py</code> and leave it running, then click Fetch balances. "Auto-fetch entry prices" estimates what you paid from your actual buy trades (quantity-weighted average) and fills the Entry price column below — you can still edit any value by hand.</div>
+      <div id="binanceError"></div>
+    </details>
+
+    <div class="filters">
+      <input type="text" id="binFilterAsset" class="grow" placeholder="Filter by asset (e.g. BTC)">
+      <select id="binSort">
+        <option value="value-desc">Sort: value ↓</option>
+        <option value="value-asc">Sort: value ↑</option>
+        <option value="asset-asc">Sort: asset A–Z</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Asset</th><th class="num">Free</th><th class="num">Locked</th><th class="num">Total</th><th class="num">Value</th><th class="num">Entry price</th><th class="num">Current price</th><th class="num">P/L</th></tr></thead>
+        <tbody id="binanceRows"></tbody>
+      </table>
+    </div>
+    <div class="notice">Type in the price you paid per unit (in whichever currency you bought it in) — Binance doesn't expose your original cost basis through this API, so P/L compares that entry price against the live current price.</div>
+  </section>
+
+  <!-- OKX -->
+  <section class="panel" id="okxPanel">
+    <div class="panel-head">
+      <h2><span class="exchange-dot" style="background:var(--okx)"></span>OKX</h2>
+      <div class="sync-status" id="okxStatus">Not connected</div>
+    </div>
+
+    <details class="connect" id="okxConnect" open>
+      <summary>Local proxy connection</summary>
+      <div class="connect-form">
+        <div class="field"><label for="okxProxyUrl">Proxy URL</label><input id="okxProxyUrl" type="text" placeholder="http://localhost:8787" value="http://localhost:8787"></div>
+        <div><button class="btn primary" id="okxSyncBtn">Fetch balances &amp; orders</button> <button class="btn" id="okxEntryBtn">Auto-fetch entry prices</button></div>
+      </div>
+      <div class="notice">OKX has the same browser restriction as Binance, so this reads through the same local proxy script and its local config file. Start it with <code>python3 binance-okx-proxy.py</code> (same script handles both exchanges) and leave it running, then click Fetch. "Auto-fetch entry prices" estimates what you paid from recent buy fills (roughly the last 3 months, quantity-weighted average) and fills the Entry price column below — you can still edit any value by hand.</div>
+      <div id="okxError"></div>
+    </details>
+
+    <h3 style="font-size:14px; margin:16px 0 6px; font-family:'Source Sans 3',sans-serif; color:var(--ink-2);">Holdings</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Asset</th><th class="num">Amount</th><th class="num">Value</th><th class="num">Entry price</th><th class="num">Current price</th><th class="num">P/L</th></tr></thead>
+        <tbody id="okxHoldingRows"></tbody>
+      </table>
+    </div>
+    <div class="notice">Type in the price you paid per unit (in whichever currency you bought it in) — OKX's balance API doesn't return your original cost basis, so P/L compares that entry price against the live current price.</div>
+
+    <h3 style="font-size:14px; margin:20px 0 6px; font-family:'Source Sans 3',sans-serif; color:var(--ink-2);">Orders</h3>
+    <div id="latestOpenOrder"></div>
+    <div class="filters">
+      <input type="text" id="okxFilterInstrument" class="grow" placeholder="Filter by instrument (e.g. BTC-USDT)">
+      <select id="okxFilterStatus">
+        <option value="all">All statuses</option>
+        <option value="live">Live</option>
+        <option value="partially_filled">Partially filled</option>
+        <option value="filled">Filled</option>
+        <option value="canceled">Canceled</option>
+      </select>
+      <input type="date" id="okxFilterFrom" title="From date">
+      <input type="date" id="okxFilterTo" title="To date">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>Instrument</th><th>Side</th><th class="num">Size</th><th class="num">Price</th><th>Status</th></tr></thead>
+        <tbody id="okxOrderRows"></tbody>
+      </table>
+    </div>
+    <div class="notice">OKX's order-history endpoint returns the last 7 days by default; older filled/canceled orders won't appear here.</div>
+  </section>
+
+  <!-- SALARY & EXPENSES -->
+  <section class="panel" id="cashPanel">
+    <div class="panel-head">
+      <h2><span class="exchange-dot" style="background:var(--cash)"></span>Salary &amp; Expenses</h2>
+      <div class="sync-status">From Gmail notifications + manual entries</div>
+    </div>
+    <div class="notice" id="gmailNotice">I checked the Gmail account connected to this session and found no salary-credit or spend-notification emails to import automatically — the two example rows below are placeholders. Add your real entries with the form, or edit/delete the examples.</div>
+
+    <div class="add-form" style="margin-top:16px;">
+      <div class="field"><label for="cashType">Type</label>
+        <select id="cashType"><option value="salary">Salary / credit</option><option value="expense">Expense</option></select>
+      </div>
+      <div class="field"><label for="cashDate">Date</label><input type="date" id="cashDate"></div>
+      <div class="field"><label for="cashDesc">Description</label><input type="text" id="cashDesc" placeholder="e.g. September salary"></div>
+      <div class="field"><label for="cashAmount">Amount</label><input type="number" id="cashAmount" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label for="cashCurrency">Currency</label>
+        <select id="cashCurrency"><option value="AED">AED</option><option value="USD">USD</option></select>
+      </div>
+      <div class="actions"><button class="btn primary" id="cashAddBtn">Add entry</button></div>
+    </div>
+
+    <div class="filters">
+      <input type="text" id="cashFilterText" class="grow" placeholder="Search description">
+      <select id="cashFilterType">
+        <option value="all">All types</option>
+        <option value="salary">Salary / credit</option>
+        <option value="expense">Expense</option>
+      </select>
+      <input type="date" id="cashFilterFrom" title="From date">
+      <input type="date" id="cashFilterTo" title="To date">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead>
+        <tbody id="cashRows"></tbody>
+      </table>
+    </div>
+    <div class="totals-strip">
+      <span>Total salary/credits: <b id="cashSalaryTotal" class="mono"></b></span>
+      <span>Total expenses: <b id="cashExpenseTotal" class="mono"></b></span>
+      <span>Net: <b id="cashNetTotal" class="mono"></b></span>
+    </div>
+  </section>
+
+  <!-- MANUAL OTHER INCOME -->
+  <section class="panel" id="manualPanel">
+    <div class="panel-head">
+      <h2><span class="exchange-dot" style="background:var(--manual)"></span>Other income (manual)</h2>
+      <div class="sync-status">Freelance, gifts, side income, anything else</div>
+    </div>
+    <div class="add-form">
+      <div class="field"><label for="manSource">Source</label><input type="text" id="manSource" placeholder="e.g. Freelance design"></div>
+      <div class="field"><label for="manDate">Date</label><input type="date" id="manDate"></div>
+      <div class="field"><label for="manAmount">Amount</label><input type="number" id="manAmount" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label for="manCurrency">Currency</label>
+        <select id="manCurrency"><option value="USD">USD</option><option value="AED">AED</option></select>
+      </div>
+      <div class="field"><label for="manNote">Note (optional)</label><input type="text" id="manNote" placeholder="Optional note"></div>
+      <div class="actions"><button class="btn primary" id="manAddBtn">Add value</button></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Source</th><th>Note</th><th class="num">Amount</th><th></th></tr></thead>
+        <tbody id="manualRows"></tbody>
+      </table>
+    </div>
+    <div class="totals-strip"><span>Total manual income: <b id="manualTotal" class="mono"></b></span></div>
+  </section>
+
+  <!-- DATA & PRIVACY -->
+  <section class="panel" id="dataPanel">
+    <div class="panel-head"><h2 style="font-size:18px;">Data &amp; privacy</h2></div>
+    <p style="font-size:13px; color:var(--ink-2); max-width:70ch;">
+      Holdings, orders, salary/expense entries, and manual income are stored only in this browser's local storage for this file. Your Binance/OKX API keys never touch this page or your browser at all — they live in <code>proxy-config.json</code> next to the local proxy script on your own computer, which is the only thing that talks to api.binance.com / www.okx.com. Because browser local storage isn't guaranteed to survive cleanups, export a backup occasionally.
+    </p>
+    <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+      <div class="field" style="max-width:220px;">
+        <label for="aedRate">AED → USD rate (fixed peg)</label>
+        <input type="number" id="aedRate" step="0.0001" value="3.6725">
+      </div>
+      <div class="field" style="max-width:220px;">
+        <label for="pkrRate">PKR → USD rate</label>
+        <input type="number" id="pkrRate" step="0.01" value="276.82">
+      </div>
+    </div>
+    <p style="font-size:12px; color:var(--ink-3); margin-top:-8px; max-width:70ch;">PKR floats, so update this rate yourself whenever you want a fresher conversion — AED is pegged to the dollar and rarely moves.</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button class="btn" id="exportBtn">Export backup (.json)</button>
+      <label class="btn" style="cursor:pointer;">Import backup<input type="file" id="importFile" accept="application/json" style="display:none;"></label>
+    </div>
+  </section>
+
+  <footer>Built for personal tracking · not connected to any live market data feed until you press Sync · everything above runs locally in your browser</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  const STORE_KEY = "netWorthLedger.v1";
+  const $ = (id) => document.getElementById(id);
+  const fmtUsd = (n) => (n<0?"-$":"$") + Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtNum = (n, d=6) => Number(n).toLocaleString("en-US",{maximumFractionDigits:d});
+  const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+  const todayISO = () => new Date().toISOString().slice(0,10);
+
+  function defaultState(){
+    return {
+      aedRate: 3.6725,
+      pkrRate: 276.82,
+      displayCurrency: "USD",
+      binanceProxyUrl: "http://localhost:8787",
+      okxProxyUrl: "http://localhost:8787",
+      binance: {holdings:[], totalUsd:0, lastSync:null, error:null},
+      okx: {holdings:[], totalUsd:0, orders:[], lastSync:null, error:null},
+      costBasis: {binance:{}, okx:{}},
+      cash: [
+        {id:uid(), date: todayISO(), type:"salary", description:"Example — monthly salary (edit or delete)", amount:0, currency:"AED", example:true},
+        {id:uid(), date: todayISO(), type:"expense", description:"Example — rent / card spend (edit or delete)", amount:0, currency:"AED", example:true}
+      ],
+      manual: []
+    };
+  }
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      const base = defaultState();
+      return Object.assign(base, parsed, {
+        binance: Object.assign({}, base.binance, parsed.binance||{}),
+        okx: Object.assign({}, base.okx, parsed.okx||{}),
+        costBasis: {
+          binance: Object.assign({}, base.costBasis.binance, (parsed.costBasis||{}).binance||{}),
+          okx: Object.assign({}, base.costBasis.okx, (parsed.costBasis||{}).okx||{})
+        }
+      });
+    }catch(e){ return defaultState(); }
+  }
+
+  let state = loadState();
+
+  function persist(){
+    try{
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    }catch(e){ /* storage unavailable — page still works, just won't persist */ }
+  }
+
+  function toast(msg){
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._h);
+    toast._h = setTimeout(()=>t.classList.remove("show"), 2200);
+  }
+
+  function toUsd(amount, currency){
+    if(currency === "USD") return amount;
+    if(currency === "AED") return amount / (state.aedRate || 3.6725);
+    if(currency === "PKR") return amount / (state.pkrRate || 276.82);
+    return amount;
+  }
+
+  const CUR_SYMBOL = {USD:"$", AED:"AED ", PKR:"Rs "};
+  function fromUsd(usdAmount, currency){
+    if(currency === "AED") return usdAmount * (state.aedRate || 3.6725);
+    if(currency === "PKR") return usdAmount * (state.pkrRate || 276.82);
+    return usdAmount;
+  }
+  function fmtIn(amount, currency){
+    const decimals = currency === "PKR" ? 2 : 4;
+    return CUR_SYMBOL[currency] + Number(amount).toLocaleString("en-US",{minimumFractionDigits:2, maximumFractionDigits:decimals});
+  }
+  function fmtMoney(usdAmount){
+    const cur = state.displayCurrency || "USD";
+    let val = usdAmount;
+    if(cur === "AED") val = usdAmount * (state.aedRate || 3.6725);
+    if(cur === "PKR") val = usdAmount * (state.pkrRate || 276.82);
+    const sign = val < 0 ? "-" : "";
+    const decimals = cur === "PKR" ? 0 : 2;
+    return sign + CUR_SYMBOL[cur] + Math.abs(val).toLocaleString("en-US",{minimumFractionDigits:decimals, maximumFractionDigits:decimals});
+  }
+
+  function proxyBase(id){
+    return ($(id).value.trim() || "http://localhost:8787").replace(/\/$/, "");
+  }
+
+  async function proxyGet(base, path){
+    let res;
+    try{
+      res = await fetch(base + path);
+    }catch(e){
+      throw new Error(`Can't reach the local proxy at ${base}. Is binance-okx-proxy.py running in a terminal?`);
+    }
+    const body = await res.json().catch(()=>({error:"Invalid response from proxy"}));
+    if(!res.ok || body.error){
+      throw new Error(body.error || `Proxy responded ${res.status}`);
+    }
+    return body;
+  }
+
+  // ---------- Binance ----------
+  const STABLES = ["USDT","USDC","BUSD","FDUSD","TUSD","DAI","USDP"];
+
+  async function syncBinance(){
+    setBinanceError(null);
+    $("binSyncBtn").disabled = true; $("binSyncBtn").textContent = "Fetching…";
+    $("binanceStatus").textContent = "Syncing…"; $("binanceStatus").className = "sync-status";
+    try{
+      const base = proxyBase("binProxyUrl");
+      state.binanceProxyUrl = base;
+      const acc = await proxyGet(base, "/binance/account");
+      const prices = await proxyGet(base, "/binance/prices");
+      const priceMap = {};
+      (prices||[]).forEach(p => priceMap[p.symbol] = parseFloat(p.price));
+
+      const holdings = (acc.balances||[])
+        .map(b => ({asset:b.asset, free:parseFloat(b.free), locked:parseFloat(b.locked)}))
+        .filter(b => (b.free + b.locked) > 0)
+        .map(b => {
+          const total = b.free + b.locked;
+          let usd = null;
+          if(STABLES.includes(b.asset)) usd = total;
+          else {
+            const direct = priceMap[b.asset+"USDT"] ?? priceMap[b.asset+"USDC"] ?? priceMap[b.asset+"BUSD"] ?? priceMap[b.asset+"FDUSD"];
+            if(direct) usd = total * direct;
+          }
+          return Object.assign(b, {total, usd});
+        });
+
+      state.binance.holdings = holdings;
+      state.binance.totalUsd = holdings.reduce((s,h)=> s + (h.usd||0), 0);
+      state.binance.lastSync = new Date().toISOString();
+      $("binanceStatus").textContent = `Synced ${holdings.length} assets`; $("binanceStatus").className = "sync-status ok";
+      persist(); renderAll();
+      toast("Binance balances updated");
+    }catch(err){
+      setBinanceError(String(err.message || err));
+      $("binanceStatus").textContent = "Sync failed"; $("binanceStatus").className = "sync-status err";
+    }finally{
+      $("binSyncBtn").disabled = false; $("binSyncBtn").textContent = "Fetch balances";
+    }
+  }
+
+  function setBinanceError(msg){
+    state.binance.error = msg;
+    $("binanceError").innerHTML = msg ? `<div class="notice err">${escapeHtml(msg).replace(/\n/g,"<br>")}</div>` : "";
+  }
+  function setOkxError(msg){
+    state.okx.error = msg;
+    $("okxError").innerHTML = msg ? `<div class="notice err">${escapeHtml(msg).replace(/\n/g,"<br>")}</div>` : "";
+  }
+
+  // ---------- OKX ----------
+  async function syncOkx(){
+    setOkxError(null);
+    $("okxSyncBtn").disabled = true; $("okxSyncBtn").textContent = "Fetching…";
+    $("okxStatus").textContent = "Syncing…"; $("okxStatus").className = "sync-status";
+    try{
+      const base = proxyBase("okxProxyUrl");
+      state.okxProxyUrl = base;
+      const balRes = await proxyGet(base, "/okx/balance");
+      const details = (balRes.data && balRes.data[0] && balRes.data[0].details) || [];
+      const holdings = details
+        .filter(d => parseFloat(d.eq) > 0)
+        .map(d => ({asset:d.ccy, amount:parseFloat(d.eq), usd: d.eqUsd!=null ? parseFloat(d.eqUsd) : null}));
+      const totalUsd = balRes.data && balRes.data[0] && balRes.data[0].totalEq ? parseFloat(balRes.data[0].totalEq) : holdings.reduce((s,h)=>s+(h.usd||0),0);
+
+      const [pendingRes, historyRes] = await Promise.all([
+        proxyGet(base, "/okx/orders/pending"),
+        proxyGet(base, "/okx/orders/history")
+      ]);
+      const rawOrders = [].concat(pendingRes.data||[], historyRes.data||[]);
+      const seen = new Set();
+      const orders = [];
+      rawOrders.forEach(o=>{
+        if(seen.has(o.ordId)) return;
+        seen.add(o.ordId);
+        orders.push({
+          id:o.ordId, instrument:o.instId, side:o.side, size:o.sz, price:o.px || o.avgPx,
+          status:o.state, time: o.uTime ? parseInt(o.uTime) : (o.cTime ? parseInt(o.cTime) : Date.now())
+        });
+      });
+      orders.sort((a,b)=> b.time - a.time);
+
+      state.okx.holdings = holdings;
+      state.okx.totalUsd = totalUsd;
+      state.okx.orders = orders;
+      state.okx.lastSync = new Date().toISOString();
+      $("okxStatus").textContent = `Synced ${holdings.length} assets, ${orders.length} orders`; $("okxStatus").className = "sync-status ok";
+      persist(); renderAll();
+      toast("OKX balances & orders updated");
+    }catch(err){
+      setOkxError(String(err.message || err));
+      $("okxStatus").textContent = "Sync failed"; $("okxStatus").className = "sync-status err";
+    }finally{
+      $("okxSyncBtn").disabled = false; $("okxSyncBtn").textContent = "Fetch balances & orders";
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ---------- Auto entry price (from trade history) ----------
+  async function fetchEntryPrices(exchange){
+    const holdings = state[exchange].holdings || [];
+    const assets = holdings.map(h => h.asset).filter(Boolean);
+    if(!assets.length){
+      toast(`Sync ${exchange==="binance"?"Binance":"OKX"} first so there are holdings to look up`);
+      return;
+    }
+    const btnId = exchange==="binance" ? "binEntryBtn" : "okxEntryBtn";
+    const baseId = exchange==="binance" ? "binProxyUrl" : "okxProxyUrl";
+    const errFn = exchange==="binance" ? setBinanceError : setOkxError;
+    const btn = $(btnId);
+    const btnLabel = btn.textContent;
+    btn.disabled = true; btn.textContent = "Looking up trade history…";
+    errFn(null);
+    try{
+      const base = proxyBase(baseId);
+      const res = await proxyGet(base, `/${exchange}/entry-prices?assets=${encodeURIComponent(assets.join(","))}`);
+      const results = res.results || {};
+      if(!state.costBasis[exchange]) state.costBasis[exchange] = {};
+      let found = 0;
+      const misses = [];
+      Object.keys(results).forEach(asset=>{
+        const r = results[asset];
+        if(r && r.entryPrice != null && !r.error){
+          state.costBasis[exchange][asset] = {entryPrice: r.entryPrice, currency: r.currency || "USD", auto: true};
+          found++;
+        } else {
+          misses.push({asset, reason: (r && (r.reason || r.error)) || "no trade history found"});
+        }
+      });
+      persist(); renderHero(); renderBinance(); renderOkx();
+      if(found && !misses.length){
+        toast(`Found entry prices for ${found} asset${found===1?"":"s"} from trade history`);
+      } else if(found){
+        toast(`Found entry prices for ${found} of ${assets.length} assets — see the note below for the rest`);
+        errFn(misses.map(m => `${m.asset}: ${m.reason}`).join("\n"));
+      } else {
+        errFn(misses.map(m => `${m.asset}: ${m.reason}`).join("\n") ||
+              "No entry prices could be derived from trade history. You can still type prices in manually below.");
+      }
+    }catch(err){
+      errFn(String(err.message || err));
+    }finally{
+      btn.disabled = false; btn.textContent = btnLabel;
+    }
+  }
+
+  // ---------- render: hero ----------
+  function computeTotals(){
+    const binanceUsd = state.binance.totalUsd || 0;
+    const okxUsd = state.okx.totalUsd || 0;
+    const manualUsd = state.manual.reduce((s,m)=> s + toUsd(parseFloat(m.amount)||0, m.currency), 0);
+    let salaryUsd = 0, expenseUsd = 0;
+    state.cash.forEach(c=>{
+      const v = toUsd(parseFloat(c.amount)||0, c.currency);
+      if(c.type==="salary") salaryUsd += v; else expenseUsd += v;
+    });
+    const netCash = salaryUsd - expenseUsd;
+    const total = binanceUsd + okxUsd + manualUsd + netCash;
+    return {binanceUsd, okxUsd, manualUsd, salaryUsd, expenseUsd, netCash, total};
+  }
+
+  // Cost basis is tracked per unit (the price you paid for one coin), not
+  // as a lump invested amount — that's what lets us show the same kind of
+  // "bought at X, now at Y" comparison per asset, not just a total.
+  function getBasis(exchange, asset){
+    const b = (state.costBasis[exchange]||{})[asset];
+    if(!b || !b.entryPrice) return null;
+    return b;
+  }
+
+  function holdingPL(exchange, asset, currentUsd, qty){
+    const basis = getBasis(exchange, asset);
+    if(!basis || !qty) return null;
+    const entryPriceUsd = toUsd(basis.entryPrice, basis.currency || "USD");
+    if(!entryPriceUsd) return null;
+    const currentPriceUsd = currentUsd / qty;
+    const investedUsd = entryPriceUsd * qty;
+    const diff = currentUsd - investedUsd;
+    return {
+      invested: investedUsd, diff, pct: (diff/investedUsd)*100,
+      entryPriceUsd, currentPriceUsd, unitDiffUsd: currentPriceUsd - entryPriceUsd
+    };
+  }
+
+  function computePL(){
+    let invested = 0, current = 0, tracked = 0;
+    ["binance","okx"].forEach(ex=>{
+      state[ex].holdings.forEach(h=>{
+        const usd = h.usd;
+        const qty = h.total!=null ? h.total : h.amount;
+        if(usd==null) return;
+        const pl = holdingPL(ex, h.asset, usd, qty);
+        if(pl){ invested += pl.invested; current += usd; tracked++; }
+      });
+    });
+    return {invested, current, diff: current-invested, tracked};
+  }
+
+  function plBadge(diff, pct){
+    if(diff == null) return `<span class="pl-flat">—</span>`;
+    const cls = diff > 0.005 ? "pl-pos" : diff < -0.005 ? "pl-neg" : "pl-flat";
+    const arrow = diff > 0.005 ? "▲" : diff < -0.005 ? "▼" : "•";
+    const pctStr = isFinite(pct) ? ` (${diff>=0?"+":""}${pct.toFixed(1)}%)` : "";
+    return `<span class="${cls}">${arrow} ${fmtMoney(diff)}${pctStr}</span>`;
+  }
+
+  function renderHero(){
+    const t = computeTotals();
+    const pl = computePL();
+    $("heroCurLabel").textContent = state.displayCurrency;
+    $("heroTotal").textContent = fmtMoney(t.total);
+    const parts = [
+      {label:"Binance", value:t.binanceUsd, color:"var(--binance)"},
+      {label:"OKX", value:t.okxUsd, color:"var(--okx)"},
+      {label:"Manual income", value:t.manualUsd, color:"var(--manual)"},
+      {label:"Net cash (salary − expenses)", value:t.netCash, color:"var(--cash)"}
+    ];
+    const positive = parts.filter(p=>p.value>0);
+    const sumPositive = positive.reduce((s,p)=>s+p.value,0) || 1;
+    $("compBar").innerHTML = positive.map(p=>
+      `<span style="width:${(p.value/sumPositive*100).toFixed(2)}%; background:${p.color}"></span>`
+    ).join("");
+    $("compLegend").innerHTML = parts.map(p=>
+      `<span class="item"><span class="sw" style="background:${p.color}"></span>${p.label}: <b class="mono">${fmtMoney(p.value)}</b></span>`
+    ).join("");
+
+    $("statRow").innerHTML = parts.map(p=>
+      `<div class="stat"><div class="k"><span class="dot" style="background:${p.color}"></span>${p.label}</div><div class="v mono">${fmtMoney(p.value)}</div></div>`
+    ).join("");
+
+    if(pl.tracked > 0){
+      const pct = pl.invested ? (pl.diff/pl.invested)*100 : 0;
+      const cls = pl.diff > 0.005 ? "pl-pos" : pl.diff < -0.005 ? "pl-neg" : "pl-flat";
+      const arrow = pl.diff > 0.005 ? "▲" : pl.diff < -0.005 ? "▼" : "•";
+      $("heroPlValue").innerHTML = `<span class="${cls}">${arrow} ${fmtMoney(pl.diff)}</span>`;
+      $("heroPlSub").textContent = `${pl.diff>=0?"+":""}${pct.toFixed(1)}% across ${pl.tracked} tracked asset${pl.tracked===1?"":"s"}`;
+      $("plRow").innerHTML = `
+        <div class="stat"><div class="k">Invested (tracked assets)</div><div class="v mono">${fmtMoney(pl.invested)}</div></div>
+        <div class="stat"><div class="k">Current value (same assets)</div><div class="v mono">${fmtMoney(pl.current)}</div></div>`;
+    } else {
+      $("heroPlValue").innerHTML = `<span class="pl-flat">—</span>`;
+      $("heroPlSub").textContent = "Add entry prices in the tables below";
+      $("plRow").innerHTML = "";
+    }
+
+    const stamps = [];
+    if(state.binance.lastSync) stamps.push("Binance " + new Date(state.binance.lastSync).toLocaleString());
+    if(state.okx.lastSync) stamps.push("OKX " + new Date(state.okx.lastSync).toLocaleString());
+    $("heroSub").textContent = stamps.length ? "Last synced — " + stamps.join(" · ") : "Sync Binance/OKX and add cash entries to populate this total";
+  }
+
+  // ---------- render: Binance table ----------
+  function renderBinance(){
+    $("binanceStatus").textContent = state.binance.lastSync ? `Last synced ${new Date(state.binance.lastSync).toLocaleString()}` : "Not connected";
+    $("binanceStatus").className = "sync-status";
+    if($("binProxyUrl").value==="" && state.binanceProxyUrl) $("binProxyUrl").value = state.binanceProxyUrl;
+
+    const filterText = ($("binFilterAsset").value||"").toUpperCase();
+    const sort = $("binSort").value;
+    let rows = state.binance.holdings.filter(h => !filterText || h.asset.includes(filterText));
+    rows.sort((a,b)=>{
+      if(sort==="value-asc") return (a.usd||0)-(b.usd||0);
+      if(sort==="asset-asc") return a.asset.localeCompare(b.asset);
+      return (b.usd||0)-(a.usd||0);
+    });
+    $("binanceRows").innerHTML = rows.length ? rows.map(h => {
+      const qty = h.total!=null ? h.total : h.free;
+      const pl = h.usd!=null ? holdingPL("binance", h.asset, h.usd, qty) : null;
+      const basis = getBasis("binance", h.asset);
+      const entryVal = basis ? basis.entryPrice : "";
+      const entryCur = basis ? basis.currency : "USD";
+      const currentDisplay = (pl && pl.currentPriceUsd!=null) ? fmtIn(fromUsd(pl.currentPriceUsd, entryCur), entryCur) : (h.usd!=null && qty ? fmtIn(fromUsd(h.usd/qty, entryCur), entryCur) : "—");
+      return `
+      <tr>
+        <td><b>${escapeHtml(h.asset)}</b></td>
+        <td class="num">${fmtNum(h.free)}</td>
+        <td class="num">${fmtNum(h.locked)}</td>
+        <td class="num">${fmtNum(h.total)}</td>
+        <td class="num">${h.usd!=null ? fmtMoney(h.usd) : "—"}</td>
+        <td class="num">
+          <span class="basis-group">
+            <input type="number" class="basis-input" step="0.0001" placeholder="price" value="${entryVal}" data-basis-ex="binance" data-basis-asset="${escapeHtml(h.asset)}" data-basis-field="price">
+            <select class="basis-cur" data-basis-ex="binance" data-basis-asset="${escapeHtml(h.asset)}" data-basis-field="currency">
+              <option value="USD" ${entryCur==="USD"?"selected":""}>USD</option>
+              <option value="AED" ${entryCur==="AED"?"selected":""}>AED</option>
+              <option value="PKR" ${entryCur==="PKR"?"selected":""}>PKR</option>
+            </select>
+          </span>
+        </td>
+        <td class="num">${currentDisplay}</td>
+        <td class="num">${pl ? plBadge(pl.diff, pl.pct) : `<span class="pl-flat">—</span>`}</td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="8" class="empty">No Binance holdings yet — connect and sync above, or this account currently holds nothing.</td></tr>`;
+  }
+
+  // ---------- render: OKX ----------
+  function renderOkx(){
+    $("okxStatus").textContent = state.okx.lastSync ? `Last synced ${new Date(state.okx.lastSync).toLocaleString()}` : "Not connected";
+    $("okxStatus").className = "sync-status";
+    if($("okxProxyUrl").value==="" && state.okxProxyUrl) $("okxProxyUrl").value = state.okxProxyUrl;
+
+    $("okxHoldingRows").innerHTML = state.okx.holdings.length ? state.okx.holdings.map(h=>{
+      const qty = h.amount;
+      const pl = h.usd!=null ? holdingPL("okx", h.asset, h.usd, qty) : null;
+      const basis = getBasis("okx", h.asset);
+      const entryVal = basis ? basis.entryPrice : "";
+      const entryCur = basis ? basis.currency : "USD";
+      const currentDisplay = (pl && pl.currentPriceUsd!=null) ? fmtIn(fromUsd(pl.currentPriceUsd, entryCur), entryCur) : (h.usd!=null && qty ? fmtIn(fromUsd(h.usd/qty, entryCur), entryCur) : "—");
+      return `
+      <tr>
+        <td><b>${escapeHtml(h.asset)}</b></td>
+        <td class="num">${fmtNum(h.amount)}</td>
+        <td class="num">${h.usd!=null?fmtMoney(h.usd):"—"}</td>
+        <td class="num">
+          <span class="basis-group">
+            <input type="number" class="basis-input" step="0.0001" placeholder="price" value="${entryVal}" data-basis-ex="okx" data-basis-asset="${escapeHtml(h.asset)}" data-basis-field="price">
+            <select class="basis-cur" data-basis-ex="okx" data-basis-asset="${escapeHtml(h.asset)}" data-basis-field="currency">
+              <option value="USD" ${entryCur==="USD"?"selected":""}>USD</option>
+              <option value="AED" ${entryCur==="AED"?"selected":""}>AED</option>
+              <option value="PKR" ${entryCur==="PKR"?"selected":""}>PKR</option>
+            </select>
+          </span>
+        </td>
+        <td class="num">${currentDisplay}</td>
+        <td class="num">${pl ? plBadge(pl.diff, pl.pct) : `<span class="pl-flat">—</span>`}</td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="6" class="empty">No OKX holdings yet — connect and sync above.</td></tr>`;
+
+    // Latest open order callout
+    const openOrders = state.okx.orders.filter(o => o.status==="live" || o.status==="partially_filled").sort((a,b)=>b.time-a.time);
+    const latest = openOrders[0];
+    $("latestOpenOrder").innerHTML = latest ? `
+      <div class="open-order-card">
+        <div class="field-mini"><span class="k">Latest open order</span><span class="v"><b>${escapeHtml(latest.instrument)}</b></span></div>
+        <div class="field-mini"><span class="k">Side</span><span class="v">${escapeHtml(latest.side)}</span></div>
+        <div class="field-mini"><span class="k">Size</span><span class="v">${fmtNum(latest.size)}</span></div>
+        <div class="field-mini"><span class="k">Price</span><span class="v">${latest.price?fmtNum(latest.price,4):"—"}</span></div>
+        <div class="field-mini"><span class="k">Placed</span><span class="v">${new Date(latest.time).toLocaleString()}</span></div>
+        <span class="pill ${latest.status}">${escapeHtml((latest.status||"").replace("_"," "))}</span>
+      </div>` : `<div class="notice">No open (live or partially filled) OKX orders right now.</div>`;
+
+    const instFilter = ($("okxFilterInstrument").value||"").toUpperCase();
+    const statusFilter = $("okxFilterStatus").value;
+    const from = $("okxFilterFrom").value ? new Date($("okxFilterFrom").value).getTime() : null;
+    const to = $("okxFilterTo").value ? new Date($("okxFilterTo").value).getTime() + 86400000 : null;
+    let orders = state.okx.orders.filter(o=>{
+      if(instFilter && !o.instrument.toUpperCase().includes(instFilter)) return false;
+      if(statusFilter!=="all" && o.status!==statusFilter) return false;
+      if(from && o.time < from) return false;
+      if(to && o.time > to) return false;
+      return true;
+    });
+    $("okxOrderRows").innerHTML = orders.length ? orders.map(o=>`
+      <tr>
+        <td>${new Date(o.time).toLocaleString()}</td>
+        <td><b>${escapeHtml(o.instrument)}</b></td>
+        <td>${escapeHtml(o.side)}</td>
+        <td class="num">${fmtNum(o.size)}</td>
+        <td class="num">${o.price?fmtNum(o.price,4):"—"}</td>
+        <td><span class="pill ${o.status}">${escapeHtml((o.status||"").replace("_"," "))}</span></td>
+      </tr>`).join("") : `<tr><td colspan="6" class="empty">No orders match these filters yet.</td></tr>`;
+  }
+
+  // ---------- render: cash ledger ----------
+  function renderCash(){
+    const text = ($("cashFilterText").value||"").toLowerCase();
+    const type = $("cashFilterType").value;
+    const from = $("cashFilterFrom").value;
+    const to = $("cashFilterTo").value;
+    let rows = state.cash.filter(c=>{
+      if(text && !c.description.toLowerCase().includes(text)) return false;
+      if(type!=="all" && c.type!==type) return false;
+      if(from && c.date < from) return false;
+      if(to && c.date > to) return false;
+      return true;
+    });
+    rows.sort((a,b)=> b.date.localeCompare(a.date));
+    $("cashRows").innerHTML = rows.length ? rows.map(c=>`
+      <tr>
+        <td>${c.date}</td>
+        <td><span class="pill ${c.type}${c.example?" example":""}">${c.type==="salary"?"Salary":"Expense"}${c.example?" · example":""}</span></td>
+        <td>${escapeHtml(c.description)}</td>
+        <td class="num">${c.type==="expense"?"-":""}${c.currency} ${fmtNum(c.amount,2)}</td>
+        <td class="row-actions"><button class="icon-btn" data-del-cash="${c.id}" title="Delete">✕</button></td>
+      </tr>`).join("") : `<tr><td colspan="5" class="empty">No entries match these filters.</td></tr>`;
+
+    const t = computeTotals();
+    $("cashSalaryTotal").textContent = fmtMoney(t.salaryUsd);
+    $("cashExpenseTotal").textContent = fmtMoney(t.expenseUsd);
+    $("cashNetTotal").textContent = fmtMoney(t.netCash);
+  }
+
+  // ---------- render: manual ----------
+  function renderManual(){
+    $("manualRows").innerHTML = state.manual.length ? state.manual.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(m=>`
+      <tr>
+        <td>${m.date}</td>
+        <td><b>${escapeHtml(m.source)}</b></td>
+        <td>${escapeHtml(m.note||"—")}</td>
+        <td class="num">${m.currency} ${fmtNum(m.amount,2)}</td>
+        <td class="row-actions"><button class="icon-btn" data-del-manual="${m.id}" title="Delete">✕</button></td>
+      </tr>`).join("") : `<tr><td colspan="5" class="empty">No manual entries yet — add income from other sources above.</td></tr>`;
+    const t = computeTotals();
+    $("manualTotal").textContent = fmtMoney(t.manualUsd);
+  }
+
+  function renderAll(){
+    renderHero(); renderBinance(); renderOkx(); renderCash(); renderManual();
+  }
+
+  // ---------- events ----------
+  $("syncAllBtn").addEventListener("click", ()=>{ syncBinance(); syncOkx(); });
+  $("binSyncBtn").addEventListener("click", syncBinance);
+  $("okxSyncBtn").addEventListener("click", syncOkx);
+  $("binEntryBtn").addEventListener("click", ()=>fetchEntryPrices("binance"));
+  $("okxEntryBtn").addEventListener("click", ()=>fetchEntryPrices("okx"));
+  $("binFilterAsset").addEventListener("input", renderBinance);
+  $("binSort").addEventListener("change", renderBinance);
+  ["okxFilterInstrument","okxFilterStatus","okxFilterFrom","okxFilterTo"].forEach(id=> $(id).addEventListener("input", renderOkx));
+  ["cashFilterText","cashFilterType","cashFilterFrom","cashFilterTo"].forEach(id=> $(id).addEventListener("input", renderCash));
+
+  $("cashAddBtn").addEventListener("click", ()=>{
+    const amount = parseFloat($("cashAmount").value);
+    if(!amount || amount<=0){ toast("Enter a valid amount"); return; }
+    state.cash.push({
+      id:uid(), date: $("cashDate").value || todayISO(), type:$("cashType").value,
+      description: $("cashDesc").value.trim() || (($("cashType").value==="salary")?"Salary credit":"Expense"),
+      amount, currency: $("cashCurrency").value, example:false
+    });
+    $("cashDesc").value=""; $("cashAmount").value="";
+    persist(); renderAll(); toast("Entry added");
+  });
+  $("cashRows").addEventListener("click", (e)=>{
+    const id = e.target.getAttribute("data-del-cash");
+    if(!id) return;
+    state.cash = state.cash.filter(c=>c.id!==id);
+    persist(); renderAll();
+  });
+
+  $("manAddBtn").addEventListener("click", ()=>{
+    const amount = parseFloat($("manAmount").value);
+    if(!amount || amount<=0){ toast("Enter a valid amount"); return; }
+    if(!$("manSource").value.trim()){ toast("Enter a source"); return; }
+    state.manual.push({
+      id:uid(), date: $("manDate").value || todayISO(), source: $("manSource").value.trim(),
+      amount, currency: $("manCurrency").value, note: $("manNote").value.trim()
+    });
+    $("manSource").value=""; $("manAmount").value=""; $("manNote").value="";
+    persist(); renderAll(); toast("Value added");
+  });
+  $("manualRows").addEventListener("click", (e)=>{
+    const id = e.target.getAttribute("data-del-manual");
+    if(!id) return;
+    state.manual = state.manual.filter(m=>m.id!==id);
+    persist(); renderAll();
+  });
+
+  $("aedRate").addEventListener("change", ()=>{
+    state.aedRate = parseFloat($("aedRate").value) || 3.6725;
+    persist(); renderAll();
+  });
+  $("pkrRate").addEventListener("change", ()=>{
+    state.pkrRate = parseFloat($("pkrRate").value) || 276.82;
+    persist(); renderAll();
+  });
+
+  $("currencyToggle").addEventListener("click", (e)=>{
+    const btn = e.target.closest("button[data-cur]");
+    if(!btn) return;
+    state.displayCurrency = btn.getAttribute("data-cur");
+    $("currencyToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("active", b===btn));
+    persist(); renderAll();
+  });
+
+  // Cost-basis (entry price + currency) inputs are re-rendered on every
+  // renderAll, so listen at the table level rather than re-binding per input.
+  function bindBasisTable(tableId, exchange, rerender){
+    $(tableId).addEventListener("change", (e)=>{
+      const el = e.target.closest("[data-basis-asset]");
+      if(!el) return;
+      const asset = el.getAttribute("data-basis-asset");
+      const row = el.closest("tr");
+      const priceEl = row.querySelector(`input[data-basis-field="price"]`);
+      const curEl = row.querySelector(`select[data-basis-field="currency"]`);
+      const price = parseFloat(priceEl ? priceEl.value : "");
+      const currency = curEl ? curEl.value : "USD";
+      if(!state.costBasis[exchange]) state.costBasis[exchange] = {};
+      if(price > 0) state.costBasis[exchange][asset] = {entryPrice: price, currency: currency};
+      else delete state.costBasis[exchange][asset];
+      persist(); renderHero(); rerender();
+    });
+  }
+  bindBasisTable("binanceRows", "binance", renderBinance);
+  bindBasisTable("okxHoldingRows", "okx", renderOkx);
+
+  $("exportBtn").addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `net-worth-ledger-backup-${todayISO()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast("Backup downloaded");
+  });
+  $("importFile").addEventListener("change", (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const parsed = JSON.parse(reader.result);
+        state = Object.assign(defaultState(), parsed, {
+          binance: Object.assign({}, defaultState().binance, parsed.binance||{}),
+          okx: Object.assign({}, defaultState().okx, parsed.okx||{})
+        });
+        persist(); renderAll();
+        toast("Backup imported");
+      }catch(err){ toast("Couldn't read that file — is it a valid backup?"); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  // init defaults for date inputs
+  $("cashDate").value = todayISO();
+  $("manDate").value = todayISO();
+  $("aedRate").value = state.aedRate;
+  $("pkrRate").value = state.pkrRate;
+  $("binProxyUrl").value = state.binanceProxyUrl || "http://localhost:8787";
+  $("okxProxyUrl").value = state.okxProxyUrl || "http://localhost:8787";
+  $("currencyToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("active", b.getAttribute("data-cur")===state.displayCurrency));
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
