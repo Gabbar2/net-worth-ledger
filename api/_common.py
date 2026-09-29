@@ -1,18 +1,16 @@
-"""
-Shared logic for the cloud version of the Binance/OKX proxy.
-
-This is the same signing/aggregation logic as the local binance-okx-proxy.py
-script, ported to run as Vercel serverless functions instead of a script on
-your own machine. The big difference: your API keys live in this project's
-Vercel Environment Variables (encrypted at rest, never in this repo's code
-or in the browser) instead of a local proxy-config.json file, and every
-request must carry a shared access token so a stranger who finds your
-Vercel URL can't call your exchange keys.
-
-Vercel ignores any file in /api that starts with an underscore, so this
-file is never turned into a route of its own — it's only ever imported by
-the actual route files sitting next to it.
-"""
+# Shared logic for the cloud version of the Binance/OKX proxy.
+#
+# This is the same signing/aggregation logic as the local binance-okx-proxy.py
+# script, ported to run as Vercel serverless functions instead of a script on
+# your own machine. The big difference: your API keys live in this project's
+# Vercel Environment Variables (encrypted at rest, never in this repo's code
+# or in the browser) instead of a local proxy-config.json file, and every
+# request must carry a shared access token so a stranger who finds your
+# Vercel URL can't call your exchange keys.
+#
+# Vercel ignores any file in /api that starts with an underscore, so this
+# file is never turned into a route of its own -- it's only ever imported by
+# the actual route files sitting next to it.
 
 import json
 import os
@@ -43,9 +41,9 @@ def access_token_configured():
 
 
 def check_auth(handler):
-    """Returns True if the request is authorized. A missing
-    PROXY_ACCESS_TOKEN env var fails closed (nothing works) rather than
-    open, so a forgotten setup step can't accidentally leave this public."""
+    # Returns True if the request is authorized. A missing PROXY_ACCESS_TOKEN
+    # env var fails closed (nothing works) rather than open, so a forgotten
+    # setup step can't accidentally leave this public.
     expected = env("PROXY_ACCESS_TOKEN")
     if not expected:
         return False
@@ -75,9 +73,9 @@ def http_get(url, headers=None):
 
 
 def binance_time_offset():
-    """Cold starts mean this cache rarely helps much here (unlike the
-    long-running local proxy), but it's harmless and saves a round trip
-    on warm invocations."""
+    # Cold starts mean this cache rarely helps much here (unlike the
+    # long-running local proxy), but it's harmless and saves a round trip
+    # on warm invocations.
     try:
         status, body = http_get("https://api.binance.com/api/v3/time")
         data = json.loads(body)
@@ -310,5 +308,20 @@ def forward(handler, status, body, exchange):
 
 
 def require_auth_or_401(handler):
-    """Call at the top of every route's do_GET. Returns True if the caller
-    should
+    # Call at the top of every route's do_GET. Returns True if the caller
+    # should stop (either unauthorized or misconfigured).
+    if not access_token_configured():
+        send_error(handler, 500, "This deployment is missing its PROXY_ACCESS_TOKEN environment "
+                                  "variable, so every request is refused rather than left open. "
+                                  "Set it in Vercel → Project Settings → Environment Variables.")
+        return True
+    if not check_auth(handler):
+        send_error(handler, 401, "Missing or incorrect access token. Set the same token in the "
+                                  "dashboard's Data & privacy panel as PROXY_ACCESS_TOKEN on this "
+                                  "Vercel project.")
+        return True
+    return False
+
+
+def parse_query(handler):
+    return urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query)
