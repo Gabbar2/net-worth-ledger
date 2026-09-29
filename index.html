@@ -356,7 +356,7 @@
   <section class="panel" id="dataPanel">
     <div class="panel-head"><h2 style="font-size:18px;">Data &amp; privacy</h2></div>
     <p style="font-size:13px; color:var(--ink-2); max-width:70ch;">
-      Holdings, orders, salary/expense entries, and manual income are stored only in this browser's local storage for this file. Your Binance/OKX API keys never touch this page or your browser at all — they live in <code>proxy-config.json</code> next to the local proxy script on your own computer, which is the only thing that talks to api.binance.com / www.okx.com. Because browser local storage isn't guaranteed to survive cleanups, export a backup occasionally.
+      Holdings, orders, salary/expense entries, and manual income are stored only in this browser's local storage for this file. Your Binance/OKX API keys never touch this page or your browser at all — they live either in <code>proxy-config.json</code> next to the local proxy script on your own computer, or as encrypted environment variables on a cloud proxy deployment you control (e.g. Vercel). Either way, this page only ever talks to the proxy URL you set below — it never sees your keys. Because browser local storage isn't guaranteed to survive cleanups, export a backup occasionally.
     </p>
     <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
       <div class="field" style="max-width:220px;">
@@ -369,6 +369,13 @@
       </div>
     </div>
     <p style="font-size:12px; color:var(--ink-3); margin-top:-8px; max-width:70ch;">PKR floats, so update this rate yourself whenever you want a fresher conversion — AED is pegged to the dollar and rarely moves.</p>
+
+    <div class="field" style="max-width:420px; margin-bottom:14px;">
+      <label for="proxyToken">Proxy access token (only needed for a cloud-hosted proxy)</label>
+      <input type="password" id="proxyToken" placeholder="Leave blank for a local proxy on this computer" autocomplete="off">
+    </div>
+    <p style="font-size:12px; color:var(--ink-3); margin-top:-8px; max-width:70ch;">If your Binance/OKX proxy URL above points at <code>localhost</code>, leave this blank. If it points at a deployment you put on the internet (e.g. Vercel), set this to the same value as that deployment's <code>PROXY_ACCESS_TOKEN</code> environment variable — without it, every request there is refused. This token is stored only in this browser's local storage; it never leaves your device except as a header sent to the proxy URL you configured above.</p>
+
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <button class="btn" id="exportBtn">Export backup (.json)</button>
       <label class="btn" style="cursor:pointer;">Import backup<input type="file" id="importFile" accept="application/json" style="display:none;"></label>
@@ -398,6 +405,7 @@
       displayCurrency: "USD",
       binanceProxyUrl: "http://localhost:8787",
       okxProxyUrl: "http://localhost:8787",
+      proxyToken: "",
       binance: {holdings:[], totalUsd:0, lastSync:null, error:null},
       okx: {holdings:[], totalUsd:0, orders:[], lastSync:null, error:null},
       costBasis: {binance:{}, okx:{}},
@@ -475,10 +483,15 @@
 
   async function proxyGet(base, path){
     let res;
+    const headers = {};
+    if(state.proxyToken) headers["X-Auth-Token"] = state.proxyToken;
     try{
-      res = await fetch(base + path);
+      res = await fetch(base + path, {headers});
     }catch(e){
-      throw new Error(`Can't reach the local proxy at ${base}. Is binance-okx-proxy.py running in a terminal?`);
+      const isLocal = /localhost|127\.0\.0\.1/.test(base);
+      throw new Error(isLocal
+        ? `Can't reach the local proxy at ${base}. Is binance-okx-proxy.py running in a terminal?`
+        : `Can't reach ${base}. Check the proxy URL and that the deployment is live.`);
     }
     const body = await res.json().catch(()=>({error:"Invalid response from proxy"}));
     if(!res.ok || body.error){
@@ -953,6 +966,10 @@
     state.aedRate = parseFloat($("aedRate").value) || 3.6725;
     persist(); renderAll();
   });
+  $("proxyToken").addEventListener("change", ()=>{
+    state.proxyToken = $("proxyToken").value.trim();
+    persist();
+  });
   $("pkrRate").addEventListener("change", ()=>{
     state.pkrRate = parseFloat($("pkrRate").value) || 276.82;
     persist(); renderAll();
@@ -1020,6 +1037,7 @@
   $("manDate").value = todayISO();
   $("aedRate").value = state.aedRate;
   $("pkrRate").value = state.pkrRate;
+  $("proxyToken").value = state.proxyToken || "";
   $("binProxyUrl").value = state.binanceProxyUrl || "http://localhost:8787";
   $("okxProxyUrl").value = state.okxProxyUrl || "http://localhost:8787";
   $("currencyToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("active", b.getAttribute("data-cur")===state.displayCurrency));
