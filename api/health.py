@@ -1,4 +1,13 @@
 from http.server import BaseHTTPRequestHandler
+import sys
+import os
+_p = os.path.dirname(os.path.abspath(__file__))
+while not os.path.exists(os.path.join(_p, "_common.py")):
+    _parent = os.path.dirname(_p)
+    if _parent == _p:
+        break
+    _p = _parent
+sys.path.insert(0, _p)
 import _common as common
 
 
