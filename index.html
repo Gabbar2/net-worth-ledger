@@ -1132,6 +1132,36 @@
   (function initNewsFloat(){
     const card = $("newsFloat");
     if(!card) return;
+
+    // A synchronous clipboard copy, used instead of the modern async
+    // navigator.clipboard API. That API's write needs this page to still
+    // have focus when it resolves, and on mobile browsers the new tab
+    // steals focus fast enough that it's a toss-up whether the write lands
+    // in time, even when it's kicked off first — mobile just doesn't give
+    // it the same grace period desktop does. execCommand("copy") runs
+    // instantly, in the same tick as the click, so there's no window for a
+    // tab-opening focus change to interrupt it. It's an older API, but
+    // still broadly supported for exactly this one-shot "copy on click"
+    // case on both desktop and mobile.
+    function copyTextSync(text){
+      try{
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      }catch(e){
+        return false;
+      }
+    }
     // Your "BTC" ChatGPT conversation — used as the destination for the news
     // card's "Explain" links. It's a regular saved chat, not a Project, so
     // there's no URL trick to inject a new message into it directly; the
@@ -1324,12 +1354,11 @@
           explain.href = CHATGPT_BTC_CHAT_URL;
           explain.addEventListener("click", (e)=>{
             e.preventDefault();
-            const openChat = () => window.open(CHATGPT_BTC_CHAT_URL, "_blank", "noopener,noreferrer");
-            if(navigator.clipboard && navigator.clipboard.writeText){
-              navigator.clipboard.writeText(prompt).then(openChat, openChat);
-            } else {
-              openChat();
+            const copied = copyTextSync(prompt);
+            if(!copied && navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(prompt).catch(()=>{});
             }
+            window.open(CHATGPT_BTC_CHAT_URL, "_blank", "noopener,noreferrer");
           });
           explain.textContent = "💬 Explain";
           explain.title = "Ask ChatGPT (BTC project) to explain this in simple words";
