@@ -168,13 +168,22 @@
   .news-float.dragging{ user-select:none; }
   .news-float.hidden{ display:none; }
   .news-float-head{
+    position:relative; overflow:hidden;
     display:flex; align-items:center; justify-content:space-between; gap:8px;
     padding:10px 8px 10px 14px; background:var(--surface-2); border-bottom:1px solid var(--border);
     cursor:grab; touch-action:none; flex-shrink:0;
   }
+  .news-float-head::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(130% 220% at 50% -60%, rgba(var(--glow), 0.55) 0%, rgba(var(--glow),0) 75%);
+    animation: ambient-hue-drift 14s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .news-float-head::before{ animation:none; }
+  }
   .news-float-head:active{ cursor:grabbing; }
-  .news-float-title{font-size:13px; font-weight:600; display:flex; align-items:center; gap:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .news-float-actions{display:flex; align-items:center; gap:2px; flex-shrink:0;}
+  .news-float-title{position:relative; z-index:1; font-size:13px; font-weight:600; display:flex; align-items:center; gap:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .news-float-actions{position:relative; z-index:1; display:flex; align-items:center; gap:2px; flex-shrink:0;}
   .nf-btn{width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; background:none; border:none; border-radius:6px; color:var(--ink-2); cursor:pointer; font-size:14px; line-height:1;}
   .nf-btn:hover{background:var(--border); color:var(--ink);}
   .nf-btn.spin{animation:nf-spin .7s linear;}
