@@ -1123,9 +1123,13 @@
   (function initNewsFloat(){
     const card = $("newsFloat");
     if(!card) return;
-    // Your ChatGPT "BTC" project — used as the destination for the news
-    // card's "Explain" links. Change this if the project's URL changes.
-    const CHATGPT_PROJECT_URL = "https://chatgpt.com/g/g-p-6927dd1051408191812bc8985e312db8-editing-tools-overlay-text";
+    // Your "BTC" ChatGPT conversation — used as the destination for the news
+    // card's "Explain" links. It's a regular saved chat, not a Project, so
+    // there's no URL trick to inject a new message into it directly; the
+    // question gets copied to your clipboard instead (see below) and you
+    // paste it once the chat opens. Update this if the conversation's URL
+    // ever changes.
+    const CHATGPT_BTC_CHAT_URL = "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5";
     const head = $("newsFloatHead");
     const body = $("newsFloatBody");
     const statusEl = $("newsFloatStatus");
@@ -1295,13 +1299,18 @@
           explain.className = "ni-explain";
           explain.target = "_blank"; explain.rel = "noopener noreferrer";
           const prompt = `Explain in simple, non-technical terms how this crypto news could affect the market: "${item.title || ""}" (source: ${item.source || "unknown"}). Keep it short.`;
-          // Opens a new chat inside your "BTC" ChatGPT project, prefilled with
-          // the question. ChatGPT links can't append a message into one
-          // specific old conversation (no URL for that), so this is the
-          // closest thing: every click lands in the same project, just as a
-          // fresh thread each time rather than one continuous one. If the
-          // project's URL ever changes, update CHATGPT_PROJECT_URL below.
-          explain.href = CHATGPT_PROJECT_URL + "?q=" + encodeURIComponent(prompt);
+          // ChatGPT has no URL parameter that injects a new message into an
+          // existing conversation, so this copies the question to the
+          // clipboard and opens your BTC chat as-is — you paste it in once
+          // the tab opens.
+          explain.href = CHATGPT_BTC_CHAT_URL;
+          explain.addEventListener("click", ()=>{
+            if(navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(prompt)
+                .then(()=>toast("Question copied — paste it into the chat that opens"))
+                .catch(()=>{});
+            }
+          });
           explain.textContent = "💬 Explain";
           explain.title = "Ask ChatGPT (BTC project) to explain this in simple words";
 
