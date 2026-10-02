@@ -1299,18 +1299,12 @@
           explain.className = "ni-explain";
           explain.target = "_blank"; explain.rel = "noopener noreferrer";
           const prompt = `Explain in simple, non-technical terms how this crypto news could affect the market: "${item.title || ""}" (source: ${item.source || "unknown"}). Keep it short.`;
-          // Two autofill attempts stacked, falling back gracefully:
-          //  1. ?q= — ChatGPT's documented prefill param. It's only ever been
-          //     confirmed to work for a brand-new chat with no existing
-          //     conversation ID in the URL, so it's untested on a URL like
-          //     this one that already points at a specific conversation —
-          //     but if ChatGPT does honor it here, this alone does the job,
-          //     no extra install needed.
-          //  2. #explainq= — read by the optional Tampermonkey userscript,
-          //     which types + sends the question itself from inside the
-          //     ChatGPT tab. Only does anything if that script is installed.
-          // The clipboard copy below is the last-resort fallback either way.
-          explain.href = CHATGPT_BTC_CHAT_URL + "?q=" + encodeURIComponent(prompt) + "#explainq=" + encodeURIComponent(prompt);
+          // Both "?q=" and "#explainq=" turned out to actively break on
+          // mobile (ChatGPT's mobile handling mangles the combined URL into
+          // garbage), so this stays a plain link to the real conversation —
+          // reliable on every device — with the question copied to the
+          // clipboard as the assist. One paste, but it never breaks.
+          explain.href = CHATGPT_BTC_CHAT_URL;
           explain.addEventListener("click", ()=>{
             if(navigator.clipboard && navigator.clipboard.writeText){
               navigator.clipboard.writeText(prompt).catch(()=>{});
