@@ -437,7 +437,7 @@
   <div class="news-float-body" id="newsFloatBody">
     <div class="news-float-status" id="newsFloatStatus">Loading news…</div>
   </div>
-  <div class="news-float-foot">News via CryptoCompare · fetched directly, not through your proxy</div>
+  <div class="news-float-foot">Headlines from CoinDesk, Cointelegraph, Decrypt &amp; Bitcoin Magazine · via this deployment's /news route</div>
 </div>
 <button type="button" class="news-launcher hidden" id="newsLauncher" title="Show market news">📰</button>
 
@@ -1185,10 +1185,15 @@
     head.addEventListener("pointercancel", endDrag);
     window.addEventListener("resize", clampToViewport);
 
-    // news fetching — CryptoCompare's public news endpoint, called directly
-    // from the browser (CORS-enabled, no key needed). Nothing to do with
-    // your Binance/OKX proxy or keys.
+    // news fetching — a /news route on this same Vercel deployment, which
+    // fetches a handful of crypto outlets' RSS feeds server-side and hands
+    // back clean JSON. No API key, no proxy token: it's public data, and
+    // fetching it server-side sidesteps the fact that most news sites don't
+    // allow direct browser requests from other origins (CORS). Only works
+    // when this page is actually served from that deployment (not when
+    // opened as a local file, which has no /news route to call).
     function timeAgo(unixSeconds){
+      if(!unixSeconds) return "";
       const diff = Math.max(0, Math.floor(Date.now()/1000) - unixSeconds);
       if(diff < 60) return "just now";
       if(diff < 3600) return Math.floor(diff/60) + "m ago";
@@ -1196,13 +1201,25 @@
       return Math.floor(diff/86400) + "d ago";
     }
 
+    function newsBaseUrl(){
+      if(location.protocol === "http:" || location.protocol === "https:") return location.origin;
+      return null;
+    }
+
     async function loadNews(){
       refreshBtn.classList.add("spin");
+      const base = newsBaseUrl();
+      if(!base){
+        statusEl.textContent = "News needs the hosted version of this dashboard (it's not available when opened as a local file).";
+        statusEl.style.display = "block";
+        setTimeout(()=>refreshBtn.classList.remove("spin"), 700);
+        return;
+      }
       try{
-        const res = await fetch("https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=latest");
-        if(!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        const items = (data.Data || []).slice(0, 14);
+        const res = await fetch(base + "/news");
+        const body2 = await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(body2.error || ("HTTP " + res.status));
+        const items = (body2.items || []).slice(0, 14);
         body.querySelectorAll(".news-item").forEach(el=>el.remove());
         if(!items.length){
           statusEl.textContent = "No news items right now.";
@@ -1214,7 +1231,7 @@
         items.forEach(item=>{
           const a = document.createElement("a");
           a.className = "news-item";
-          a.href = item.url || item.guid || "#";
+          a.href = item.url || "#";
           a.target = "_blank"; a.rel = "noopener noreferrer";
           const title = document.createElement("div");
           title.className = "ni-title";
@@ -1223,9 +1240,9 @@
           meta.className = "ni-meta";
           const src = document.createElement("span");
           src.className = "ni-src";
-          src.textContent = (item.source_info && item.source_info.name) || item.source || "Source";
+          src.textContent = item.source || "Source";
           const time = document.createElement("span");
-          time.textContent = timeAgo(item.published_on || Math.floor(Date.now()/1000));
+          time.textContent = timeAgo(item.published_on);
           meta.appendChild(src); meta.appendChild(time);
           a.appendChild(title); a.appendChild(meta);
           frag.appendChild(a);
