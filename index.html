@@ -1303,11 +1303,23 @@
           // mobile (ChatGPT's mobile handling mangles the combined URL into
           // garbage), so this stays a plain link to the real conversation —
           // reliable on every device — with the question copied to the
-          // clipboard as the assist. One paste, but it never breaks.
+          // clipboard as the assist.
+          //
+          // The flaky part before was a race: opening the new tab shifts
+          // browser focus away from this page, and a clipboard write needs
+          // this page to still have focus to actually land — so whichever
+          // finished first was luck. Fixed by blocking the default
+          // navigation, writing to the clipboard first, and only opening
+          // the tab once that's actually done (or failed) — same-tick, so
+          // it still counts as triggered by your click.
           explain.href = CHATGPT_BTC_CHAT_URL;
-          explain.addEventListener("click", ()=>{
+          explain.addEventListener("click", (e)=>{
+            e.preventDefault();
+            const openChat = () => window.open(CHATGPT_BTC_CHAT_URL, "_blank", "noopener,noreferrer");
             if(navigator.clipboard && navigator.clipboard.writeText){
-              navigator.clipboard.writeText(prompt).catch(()=>{});
+              navigator.clipboard.writeText(prompt).then(openChat, openChat);
+            } else {
+              openChat();
             }
           });
           explain.textContent = "💬 Explain";
