@@ -239,7 +239,11 @@
   }
   .experts-launcher.hidden{display:none;}
   @media (max-width:520px){ .experts-float{ right:12px; left:12px; width:auto; bottom:12px; } .experts-launcher{left:16px; bottom:16px;} }
-  .ex-thumb{width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:7px; background:var(--surface-2);}
+  .ex-thumb{width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:7px; background:var(--surface-2); display:block;}
+  .ex-thumb-wrap{position:relative; cursor:pointer; margin-bottom:7px;}
+  .ex-thumb-wrap .ex-thumb{margin-bottom:0;}
+  .ex-play-badge{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:30px; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.65); pointer-events:none;}
+  .ex-yt-frame{width:100%; aspect-ratio:16/9; border:0; border-radius:8px; margin-bottom:7px; display:block;}
   .ex-warn{padding:8px 14px; font-size:10.5px; color:var(--ink-3); border-bottom:1px solid var(--border); background:var(--surface-2);}
   .src-instagram{color:#E1306C;}
   .src-youtube{color:#FF0000;}
@@ -1538,6 +1542,21 @@
     const SRC_LABEL = {instagram:"📸 Instagram", youtube:"▶️ YouTube", blog:"✍️ Blog"};
     const SRC_CLASS = {instagram:"src-instagram", youtube:"src-youtube", blog:"src-blog"};
 
+    // Pulls the 11-char video ID out of any of YouTube's URL shapes
+    // (watch?v=, youtu.be/, /shorts/) so a video can be embedded inline.
+    function youtubeVideoId(url){
+      if(!url) return null;
+      try{
+        const u = new URL(url);
+        if(u.hostname.replace(/^www\./,"") === "youtu.be") return u.pathname.slice(1) || null;
+        const v = u.searchParams.get("v");
+        if(v) return v;
+        const m = u.pathname.match(/\/shorts\/([^\/?]+)/);
+        if(m) return m[1];
+      }catch(e){}
+      return null;
+    }
+
     async function loadExperts(){
       refreshBtn.classList.add("spin");
       const base = expertsBaseUrl();
@@ -1574,6 +1593,65 @@
         items.forEach(item=>{
           const row = document.createElement("div");
           row.className = "news-item";
+
+          const videoId = item.source_type === "youtube" ? youtubeVideoId(item.url) : null;
+
+          if(videoId){
+            // YouTube items get an inline player: click the thumbnail to
+            // watch right here in the card, with a separate "open in new
+            // tab" link next to it for watching on YouTube itself instead.
+            const thumbWrap = document.createElement("div");
+            thumbWrap.className = "ex-thumb-wrap";
+            if(item.thumbnail){
+              const img = document.createElement("img");
+              img.className = "ex-thumb";
+              img.src = item.thumbnail;
+              img.loading = "lazy";
+              img.alt = "";
+              thumbWrap.appendChild(img);
+            }
+            const playBadge = document.createElement("span");
+            playBadge.className = "ex-play-badge";
+            playBadge.textContent = "▶";
+            thumbWrap.appendChild(playBadge);
+            thumbWrap.title = "Play here";
+            thumbWrap.addEventListener("click", ()=>{
+              const iframe = document.createElement("iframe");
+              iframe.className = "ex-yt-frame";
+              iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`;
+              iframe.title = item.title || "YouTube video";
+              iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+              iframe.allowFullscreen = true;
+              thumbWrap.replaceWith(iframe);
+            });
+
+            const title = document.createElement("div");
+            title.className = "ni-title";
+            title.textContent = item.title || "Untitled";
+
+            const meta = document.createElement("div");
+            meta.className = "ni-meta";
+            const src = document.createElement("span");
+            src.className = "ni-src " + (SRC_CLASS[item.source_type] || "");
+            src.textContent = (SRC_LABEL[item.source_type] || "Source") + " · " + (item.expert || "");
+            const time = document.createElement("span");
+            time.textContent = timeAgo(item.published_on);
+            meta.appendChild(src); meta.appendChild(time);
+
+            const row2 = document.createElement("div");
+            row2.className = "ni-row2";
+            const openLink = document.createElement("a");
+            openLink.className = "ni-explain";
+            openLink.href = item.url || "#";
+            openLink.target = "_blank"; openLink.rel = "noopener noreferrer";
+            openLink.textContent = "↗ Open in new tab";
+            openLink.title = "Open on YouTube in a new tab";
+            row2.appendChild(openLink);
+
+            row.appendChild(thumbWrap); row.appendChild(title); row.appendChild(meta); row.appendChild(row2);
+            frag.appendChild(row);
+            return;
+          }
 
           const titleLink = document.createElement("a");
           titleLink.className = "ni-title-link";
