@@ -184,12 +184,24 @@
   .news-float.minimized .news-float-body, .news-float.minimized .news-float-foot{display:none;}
   .news-float.minimized{max-height:none;}
   .news-float-status{padding:14px; font-size:12.5px; color:var(--ink-3); text-align:center;}
-  .news-item{display:block; padding:10px 14px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit;}
+  .news-float-legend{display:flex; flex-wrap:wrap; gap:10px; padding:7px 14px; font-size:10px; color:var(--ink-3); border-bottom:1px solid var(--border); align-items:center; flex-shrink:0;}
+  .news-float-legend .leg-item{display:inline-flex; align-items:center; gap:4px;}
+  .news-float.minimized .news-float-legend{display:none;}
+  .news-item{display:block; padding:10px 14px; border-bottom:1px solid var(--border);}
   .news-item:last-child{border-bottom:none;}
   .news-item:hover{background:var(--surface-2);}
+  .news-item .ni-title-link{display:block; text-decoration:none; color:inherit;}
   .news-item .ni-title{font-size:13px; font-weight:600; line-height:1.35; margin-bottom:4px; color:var(--ink);}
   .news-item .ni-meta{font-size:11px; color:var(--ink-3); display:flex; gap:8px; align-items:center;}
   .news-item .ni-src{font-weight:600; color:var(--ink-2);}
+  .news-item .ni-row2{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:7px;}
+  .ni-dot{width:7px; height:7px; border-radius:50%; display:inline-block; flex-shrink:0;}
+  .ni-dot.now{background:var(--bad);}
+  .ni-dot.future{background:var(--binance);}
+  .ni-dot.other{background:var(--good);}
+  .ni-impact{display:inline-flex; align-items:center; gap:5px;}
+  .ni-explain{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; color:var(--focus); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:999px; white-space:nowrap;}
+  .ni-explain:hover{background:var(--surface-2);}
   .news-launcher{
     position:fixed; right:24px; bottom:24px; z-index:60; width:48px; height:48px; border-radius:50%;
     background:var(--ink); color:var(--bg); border:none; font-size:20px; cursor:pointer;
@@ -434,10 +446,15 @@
       <button type="button" class="nf-btn" id="newsCloseBtn" title="Close">×</button>
     </div>
   </div>
+  <div class="news-float-legend">
+    <span class="leg-item"><span class="ni-dot now"></span>Price-moving now</span>
+    <span class="leg-item"><span class="ni-dot future"></span>Could matter later</span>
+    <span class="leg-item"><span class="ni-dot other"></span>Background</span>
+  </div>
   <div class="news-float-body" id="newsFloatBody">
     <div class="news-float-status" id="newsFloatStatus">Loading news…</div>
   </div>
-  <div class="news-float-foot">Headlines from CoinDesk, Cointelegraph, Decrypt &amp; Bitcoin Magazine · via this deployment's /news route</div>
+  <div class="news-float-foot">Headlines from CoinDesk, Cointelegraph, Decrypt &amp; Bitcoin Magazine · via this deployment's /news route · dots are a rough keyword guess, not advice</div>
 </div>
 <button type="button" class="news-launcher hidden" id="newsLauncher" title="Show market news">📰</button>
 
@@ -1229,13 +1246,18 @@
         statusEl.style.display = "none";
         const frag = document.createDocumentFragment();
         items.forEach(item=>{
-          const a = document.createElement("a");
-          a.className = "news-item";
-          a.href = item.url || "#";
-          a.target = "_blank"; a.rel = "noopener noreferrer";
+          const row = document.createElement("div");
+          row.className = "news-item";
+
+          const titleLink = document.createElement("a");
+          titleLink.className = "ni-title-link";
+          titleLink.href = item.url || "#";
+          titleLink.target = "_blank"; titleLink.rel = "noopener noreferrer";
           const title = document.createElement("div");
           title.className = "ni-title";
           title.textContent = item.title || "Untitled";
+          titleLink.appendChild(title);
+
           const meta = document.createElement("div");
           meta.className = "ni-meta";
           const src = document.createElement("span");
@@ -1244,8 +1266,39 @@
           const time = document.createElement("span");
           time.textContent = timeAgo(item.published_on);
           meta.appendChild(src); meta.appendChild(time);
-          a.appendChild(title); a.appendChild(meta);
-          frag.appendChild(a);
+
+          const row2 = document.createElement("div");
+          row2.className = "ni-row2";
+          const impact = item.impact || {};
+          const dots = document.createElement("span");
+          dots.className = "ni-impact";
+          if(impact.now){
+            const d = document.createElement("span");
+            d.className = "ni-dot now"; d.title = "Price-moving now";
+            dots.appendChild(d);
+          }
+          if(impact.future){
+            const d = document.createElement("span");
+            d.className = "ni-dot future"; d.title = "Could matter later";
+            dots.appendChild(d);
+          }
+          if(impact.other){
+            const d = document.createElement("span");
+            d.className = "ni-dot other"; d.title = "Background";
+            dots.appendChild(d);
+          }
+
+          const explain = document.createElement("a");
+          explain.className = "ni-explain";
+          explain.target = "_blank"; explain.rel = "noopener noreferrer";
+          const prompt = `Explain in simple, non-technical terms how this crypto news could affect the market: "${item.title || ""}" (source: ${item.source || "unknown"}). Keep it short.`;
+          explain.href = "https://chatgpt.com/?q=" + encodeURIComponent(prompt);
+          explain.textContent = "💬 Explain";
+          explain.title = "Ask ChatGPT to explain this in simple words";
+
+          row2.appendChild(dots); row2.appendChild(explain);
+          row.appendChild(titleLink); row.appendChild(meta); row.appendChild(row2);
+          frag.appendChild(row);
         });
         body.appendChild(frag);
       }catch(e){
