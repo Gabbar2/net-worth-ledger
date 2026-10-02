@@ -218,6 +218,32 @@
   }
   .news-launcher.hidden{display:none;}
   @media (max-width:520px){ .news-float{ right:12px; left:12px; width:auto; bottom:12px; } .news-launcher{right:16px; bottom:16px;} }
+
+  /* floating "crypto experts" card -- same pattern as the news card, mirrored
+     to the left side so the two don't sit on top of each other */
+  .experts-float{
+    position:fixed; left:24px; bottom:24px; width:340px; max-width:calc(100vw - 32px);
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    box-shadow:0 10px 32px rgba(0,0,0,.22); z-index:60; display:flex; flex-direction:column;
+    max-height:min(70vh, 560px); overflow:hidden;
+  }
+  .experts-float.dragging{ user-select:none; }
+  .experts-float.hidden{ display:none; }
+  .experts-float .news-float-body{padding:6px 0;}
+  .experts-float.minimized .news-float-body, .experts-float.minimized .news-float-foot{display:none;}
+  .experts-float.minimized{max-height:none;}
+  .experts-launcher{
+    position:fixed; left:24px; bottom:24px; z-index:60; width:48px; height:48px; border-radius:50%;
+    background:var(--ink); color:var(--bg); border:none; font-size:20px; cursor:pointer;
+    box-shadow:0 8px 20px rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center;
+  }
+  .experts-launcher.hidden{display:none;}
+  @media (max-width:520px){ .experts-float{ right:12px; left:12px; width:auto; bottom:12px; } .experts-launcher{left:16px; bottom:16px;} }
+  .ex-thumb{width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:7px; background:var(--surface-2);}
+  .ex-warn{padding:8px 14px; font-size:10.5px; color:var(--ink-3); border-bottom:1px solid var(--border); background:var(--surface-2);}
+  .src-instagram{color:#E1306C;}
+  .src-youtube{color:#FF0000;}
+  .src-blog{color:var(--focus);}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
 </style>
 </head>
@@ -473,6 +499,22 @@
 </div>
 <button type="button" class="news-launcher hidden" id="newsLauncher" title="Show market news">📰</button>
 
+<div class="experts-float hidden" id="expertsFloat">
+  <div class="news-float-head" id="expertsFloatHead">
+    <span class="news-float-title">🧠 Crypto experts</span>
+    <div class="news-float-actions">
+      <button type="button" class="nf-btn" id="expertsRefreshBtn" title="Refresh">⟳</button>
+      <button type="button" class="nf-btn" id="expertsMinBtn" title="Minimize">–</button>
+      <button type="button" class="nf-btn" id="expertsCloseBtn" title="Close">×</button>
+    </div>
+  </div>
+  <div class="news-float-body" id="expertsFloatBody">
+    <div class="news-float-status" id="expertsFloatStatus">Loading…</div>
+  </div>
+  <div class="news-float-foot">Instagram, YouTube &amp; blogs from a hand-picked list · via this deployment's /experts route</div>
+</div>
+<button type="button" class="experts-launcher" id="expertsLauncher" title="Show crypto experts">🧠</button>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -496,6 +538,7 @@
       proxyToken: "",
       chatgptBtcUrl: "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5",
       newsFloat: {open:true, minimized:false, x:null, y:null},
+      expertsFloat: {open:false, minimized:false, x:null, y:null},
       binance: {holdings:[], totalUsd:0, lastSync:null, error:null},
       okx: {holdings:[], totalUsd:0, orders:[], lastSync:null, error:null},
       costBasis: {binance:{}, okx:{}},
@@ -517,6 +560,7 @@
         binance: Object.assign({}, base.binance, parsed.binance||{}),
         okx: Object.assign({}, base.okx, parsed.okx||{}),
         newsFloat: Object.assign({}, base.newsFloat, parsed.newsFloat||{}),
+        expertsFloat: Object.assign({}, base.expertsFloat, parsed.expertsFloat||{}),
         costBasis: {
           binance: Object.assign({}, base.costBasis.binance, (parsed.costBasis||{}).binance||{}),
           okx: Object.assign({}, base.costBasis.okx, (parsed.costBasis||{}).okx||{})
@@ -1386,6 +1430,194 @@
     refreshBtn.addEventListener("click", loadNews);
     loadNews();
     setInterval(loadNews, 10*60*1000);
+  })();
+
+  // ---------------------------------------------------------------------
+  // Floating "crypto experts" card — same drag/minimize/close pattern as
+  // the news card above, pulling from this deployment's /experts route
+  // (Instagram business accounts + YouTube + blogs, hand-picked list).
+  // Closed by default so it doesn't crowd the screen until you want it.
+  // ---------------------------------------------------------------------
+  (function initExpertsFloat(){
+    const card = $("expertsFloat");
+    if(!card) return;
+
+    const head = $("expertsFloatHead");
+    const body = $("expertsFloatBody");
+    const statusEl = $("expertsFloatStatus");
+    const minBtn = $("expertsMinBtn");
+    const closeBtn = $("expertsCloseBtn");
+    const refreshBtn = $("expertsRefreshBtn");
+    const launcher = $("expertsLauncher");
+
+    const ef = state.expertsFloat || (state.expertsFloat = {open:false, minimized:false, x:null, y:null});
+
+    function applyPosition(){
+      if(ef.x != null && ef.y != null){
+        card.style.left = ef.x + "px";
+        card.style.top = ef.y + "px";
+        card.style.right = "auto";
+        card.style.bottom = "auto";
+      }
+    }
+    function clampToViewport(){
+      if(ef.x == null) return;
+      const rect = card.getBoundingClientRect();
+      const maxX = Math.max(8, window.innerWidth - rect.width - 8);
+      const maxY = Math.max(8, window.innerHeight - rect.height - 8);
+      const x = Math.min(Math.max(8, ef.x), maxX);
+      const y = Math.min(Math.max(8, ef.y), maxY);
+      card.style.left = x + "px"; card.style.top = y + "px";
+      ef.x = x; ef.y = y;
+    }
+    function applyOpenState(){
+      card.classList.toggle("hidden", !ef.open);
+      launcher.classList.toggle("hidden", !!ef.open);
+    }
+    function applyMinState(){
+      card.classList.toggle("minimized", !!ef.minimized);
+      minBtn.textContent = ef.minimized ? "▢" : "–";
+      minBtn.title = ef.minimized ? "Restore" : "Minimize";
+    }
+
+    applyPosition();
+    applyOpenState();
+    applyMinState();
+
+    minBtn.addEventListener("click", ()=>{ ef.minimized = !ef.minimized; applyMinState(); persist(); });
+    closeBtn.addEventListener("click", ()=>{ ef.open = false; applyOpenState(); persist(); });
+    launcher.addEventListener("click", ()=>{
+      ef.open = true; applyOpenState(); clampToViewport(); persist();
+      if(!body.dataset.loaded) loadExperts();
+    });
+
+    let dragging = false, offX = 0, offY = 0;
+    head.addEventListener("pointerdown", (e)=>{
+      if(e.target.closest(".nf-btn")) return;
+      dragging = true;
+      card.classList.add("dragging");
+      const rect = card.getBoundingClientRect();
+      card.style.left = rect.left + "px";
+      card.style.top = rect.top + "px";
+      card.style.right = "auto"; card.style.bottom = "auto";
+      offX = e.clientX - rect.left; offY = e.clientY - rect.top;
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener("pointermove", (e)=>{
+      if(!dragging) return;
+      const rect = card.getBoundingClientRect();
+      let x = e.clientX - offX, y = e.clientY - offY;
+      x = Math.min(Math.max(4, x), window.innerWidth - rect.width - 4);
+      y = Math.min(Math.max(4, y), window.innerHeight - rect.height - 4);
+      card.style.left = x + "px"; card.style.top = y + "px";
+    });
+    function endDrag(){
+      if(!dragging) return;
+      dragging = false;
+      card.classList.remove("dragging");
+      const rect = card.getBoundingClientRect();
+      ef.x = rect.left; ef.y = rect.top;
+      persist();
+    }
+    head.addEventListener("pointerup", endDrag);
+    head.addEventListener("pointercancel", endDrag);
+    window.addEventListener("resize", clampToViewport);
+
+    function timeAgo(unixSeconds){
+      if(!unixSeconds) return "";
+      const diff = Math.max(0, Math.floor(Date.now()/1000) - unixSeconds);
+      if(diff < 60) return "just now";
+      if(diff < 3600) return Math.floor(diff/60) + "m ago";
+      if(diff < 86400) return Math.floor(diff/3600) + "h ago";
+      return Math.floor(diff/86400) + "d ago";
+    }
+    function expertsBaseUrl(){
+      if(location.protocol === "http:" || location.protocol === "https:") return location.origin;
+      return null;
+    }
+    const SRC_LABEL = {instagram:"📸 Instagram", youtube:"▶️ YouTube", blog:"✍️ Blog"};
+    const SRC_CLASS = {instagram:"src-instagram", youtube:"src-youtube", blog:"src-blog"};
+
+    async function loadExperts(){
+      refreshBtn.classList.add("spin");
+      const base = expertsBaseUrl();
+      if(!base){
+        statusEl.textContent = "This card needs the hosted version of this dashboard.";
+        statusEl.style.display = "block";
+        setTimeout(()=>refreshBtn.classList.remove("spin"), 700);
+        return;
+      }
+      try{
+        const res = await fetch(base + "/experts");
+        const payload = await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(payload.error || ("HTTP " + res.status));
+        body.dataset.loaded = "1";
+        const items = (payload.items || []).slice(0, 20);
+        body.querySelectorAll(".news-item, .ex-warn").forEach(el=>el.remove());
+        const frag = document.createDocumentFragment();
+
+        if((payload.notes || []).length){
+          const warn = document.createElement("div");
+          warn.className = "ex-warn";
+          warn.textContent = "⚠ " + payload.notes.join(" · ");
+          frag.appendChild(warn);
+        }
+
+        if(!items.length){
+          statusEl.textContent = "No updates right now.";
+          statusEl.style.display = "block";
+          body.appendChild(frag);
+          return;
+        }
+        statusEl.style.display = "none";
+
+        items.forEach(item=>{
+          const row = document.createElement("div");
+          row.className = "news-item";
+
+          const titleLink = document.createElement("a");
+          titleLink.className = "ni-title-link";
+          titleLink.href = item.url || "#";
+          titleLink.target = "_blank"; titleLink.rel = "noopener noreferrer";
+
+          if(item.thumbnail){
+            const img = document.createElement("img");
+            img.className = "ex-thumb";
+            img.src = item.thumbnail;
+            img.loading = "lazy";
+            img.alt = "";
+            titleLink.appendChild(img);
+          }
+
+          const title = document.createElement("div");
+          title.className = "ni-title";
+          title.textContent = item.title || "Untitled";
+          titleLink.appendChild(title);
+
+          const meta = document.createElement("div");
+          meta.className = "ni-meta";
+          const src = document.createElement("span");
+          src.className = "ni-src " + (SRC_CLASS[item.source_type] || "");
+          src.textContent = (SRC_LABEL[item.source_type] || "Source") + " · " + (item.expert || "");
+          const time = document.createElement("span");
+          time.textContent = timeAgo(item.published_on);
+          meta.appendChild(src); meta.appendChild(time);
+
+          row.appendChild(titleLink); row.appendChild(meta);
+          frag.appendChild(row);
+        });
+        body.appendChild(frag);
+      }catch(e){
+        statusEl.textContent = "Couldn't load experts — tap ⟳ to retry.";
+        statusEl.style.display = "block";
+      }finally{
+        setTimeout(()=>refreshBtn.classList.remove("spin"), 700);
+      }
+    }
+
+    refreshBtn.addEventListener("click", loadExperts);
+    if(ef.open) loadExperts();
+    setInterval(()=>{ if(ef.open) loadExperts(); }, 10*60*1000);
   })();
 
   renderAll();
