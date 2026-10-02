@@ -1299,16 +1299,21 @@
           explain.className = "ni-explain";
           explain.target = "_blank"; explain.rel = "noopener noreferrer";
           const prompt = `Explain in simple, non-technical terms how this crypto news could affect the market: "${item.title || ""}" (source: ${item.source || "unknown"}). Keep it short.`;
-          // ChatGPT has no URL parameter that injects a new message into an
-          // existing conversation, so this copies the question to the
-          // clipboard and opens your BTC chat as-is — you paste it in once
-          // the tab opens.
-          explain.href = CHATGPT_BTC_CHAT_URL;
+          // Two autofill attempts stacked, falling back gracefully:
+          //  1. ?q= — ChatGPT's documented prefill param. It's only ever been
+          //     confirmed to work for a brand-new chat with no existing
+          //     conversation ID in the URL, so it's untested on a URL like
+          //     this one that already points at a specific conversation —
+          //     but if ChatGPT does honor it here, this alone does the job,
+          //     no extra install needed.
+          //  2. #explainq= — read by the optional Tampermonkey userscript,
+          //     which types + sends the question itself from inside the
+          //     ChatGPT tab. Only does anything if that script is installed.
+          // The clipboard copy below is the last-resort fallback either way.
+          explain.href = CHATGPT_BTC_CHAT_URL + "?q=" + encodeURIComponent(prompt) + "#explainq=" + encodeURIComponent(prompt);
           explain.addEventListener("click", ()=>{
             if(navigator.clipboard && navigator.clipboard.writeText){
-              navigator.clipboard.writeText(prompt)
-                .then(()=>toast("Question copied — paste it into the chat that opens"))
-                .catch(()=>{});
+              navigator.clipboard.writeText(prompt).catch(()=>{});
             }
           });
           explain.textContent = "💬 Explain";
