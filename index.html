@@ -437,6 +437,12 @@
     </div>
     <p style="font-size:12px; color:var(--ink-3); margin-top:-8px; max-width:70ch;">If your Binance/OKX proxy URL above points at <code>localhost</code>, leave this blank. If it points at a deployment you put on the internet (e.g. Vercel), set this to the same value as that deployment's <code>PROXY_ACCESS_TOKEN</code> environment variable — without it, every request there is refused. This token is stored only in this browser's local storage; it never leaves your device except as a header sent to the proxy URL you configured above.</p>
 
+    <div class="field" style="max-width:420px; margin-bottom:14px;">
+      <label for="chatgptBtcUrl">ChatGPT "BTC" conversation link (used by the news card's Explain button)</label>
+      <input type="text" id="chatgptBtcUrl" placeholder="https://chatgpt.com/c/..." autocomplete="off">
+    </div>
+    <p style="font-size:12px; color:var(--ink-3); margin-top:-8px; max-width:70ch;">ChatGPT conversations eventually hit a length limit and stop accepting new messages. When that happens to this one, open a new chat in ChatGPT, copy its URL from the address bar, and paste it here — the news card's Explain button will start using it immediately, no file edit needed.</p>
+
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <button class="btn" id="exportBtn">Export backup (.json)</button>
       <label class="btn" style="cursor:pointer;">Import backup<input type="file" id="importFile" accept="application/json" style="display:none;"></label>
@@ -488,6 +494,7 @@
       binanceProxyUrl: "http://localhost:8787",
       okxProxyUrl: "http://localhost:8787",
       proxyToken: "",
+      chatgptBtcUrl: "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5",
       newsFloat: {open:true, minimized:false, x:null, y:null},
       binance: {holdings:[], totalUsd:0, lastSync:null, error:null},
       okx: {holdings:[], totalUsd:0, orders:[], lastSync:null, error:null},
@@ -1054,6 +1061,10 @@
     state.proxyToken = $("proxyToken").value.trim();
     persist();
   });
+  $("chatgptBtcUrl").addEventListener("change", ()=>{
+    state.chatgptBtcUrl = $("chatgptBtcUrl").value.trim() || defaultState().chatgptBtcUrl;
+    persist();
+  });
   $("pkrRate").addEventListener("change", ()=>{
     state.pkrRate = parseFloat($("pkrRate").value) || 276.82;
     persist(); renderAll();
@@ -1122,6 +1133,7 @@
   $("aedRate").value = state.aedRate;
   $("pkrRate").value = state.pkrRate;
   $("proxyToken").value = state.proxyToken || "";
+  $("chatgptBtcUrl").value = state.chatgptBtcUrl || defaultState().chatgptBtcUrl;
   $("binProxyUrl").value = state.binanceProxyUrl || "http://localhost:8787";
   $("okxProxyUrl").value = state.okxProxyUrl || "http://localhost:8787";
   $("currencyToggle").querySelectorAll("button").forEach(b=>b.classList.toggle("active", b.getAttribute("data-cur")===state.displayCurrency));
@@ -1166,9 +1178,12 @@
     // card's "Explain" links. It's a regular saved chat, not a Project, so
     // there's no URL trick to inject a new message into it directly; the
     // question gets copied to your clipboard instead (see below) and you
-    // paste it once the chat opens. Update this if the conversation's URL
-    // ever changes.
-    const CHATGPT_BTC_CHAT_URL = "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5";
+    // paste it once the chat opens. Editable in the Data & Privacy panel
+    // (state.chatgptBtcUrl) — read fresh on every click so a change there
+    // takes effect without reloading.
+    function chatgptBtcUrl(){
+      return state.chatgptBtcUrl || "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5";
+    }
     const head = $("newsFloatHead");
     const body = $("newsFloatBody");
     const statusEl = $("newsFloatStatus");
@@ -1343,22 +1358,14 @@
           // garbage), so this stays a plain link to the real conversation —
           // reliable on every device — with the question copied to the
           // clipboard as the assist.
-          //
-          // The flaky part before was a race: opening the new tab shifts
-          // browser focus away from this page, and a clipboard write needs
-          // this page to still have focus to actually land — so whichever
-          // finished first was luck. Fixed by blocking the default
-          // navigation, writing to the clipboard first, and only opening
-          // the tab once that's actually done (or failed) — same-tick, so
-          // it still counts as triggered by your click.
-          explain.href = CHATGPT_BTC_CHAT_URL;
+          explain.href = chatgptBtcUrl();
           explain.addEventListener("click", (e)=>{
             e.preventDefault();
             const copied = copyTextSync(prompt);
             if(!copied && navigator.clipboard && navigator.clipboard.writeText){
               navigator.clipboard.writeText(prompt).catch(()=>{});
             }
-            window.open(CHATGPT_BTC_CHAT_URL, "_blank", "noopener,noreferrer");
+            window.open(chatgptBtcUrl(), "_blank", "noopener,noreferrer");
           });
           explain.textContent = "💬 Explain";
           explain.title = "Ask ChatGPT (BTC project) to explain this in simple words";
