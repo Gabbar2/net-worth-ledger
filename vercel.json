@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/binance/:path*", "destination": "/api/binance/:path*" },
     { "source": "/okx/:path*", "destination": "/api/okx/:path*" },
-    { "source": "/health", "destination": "/api/health" }
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/news", "destination": "/api/news" }
   ]
 }
