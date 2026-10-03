@@ -1400,7 +1400,7 @@
           const explain = document.createElement("a");
           explain.className = "ni-explain";
           explain.target = "_blank"; explain.rel = "noopener noreferrer";
-          const prompt = `Explain in simple, non-technical terms how this crypto news could affect the market: "${item.title || ""}" (source: ${item.source || "unknown"}). Keep it short.`;
+          const prompt = `Explain in simple, non-technical terms how this crypto news could affect the market, which coins or tokens might rise in price, and how long each might take to react: "${item.title || ""}" (source: ${item.source || "unknown"}). Keep it short.`;
           // Both "?q=" and "#explainq=" turned out to actively break on
           // mobile (ChatGPT's mobile handling mangles the combined URL into
           // garbage), so this stays a plain link to the real conversation —
