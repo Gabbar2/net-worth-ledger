@@ -6,5 +6,8 @@
     { "source": "/health", "destination": "/api/health" },
     { "source": "/news", "destination": "/api/news" },
     { "source": "/experts", "destination": "/api/experts" }
-  ]
+  ],
+  "functions": {
+    "api/experts.py": { "maxDuration": 60 }
+  }
 }
