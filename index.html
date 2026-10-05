@@ -244,6 +244,7 @@
   .ex-thumb-wrap .ex-thumb{margin-bottom:0;}
   .ex-play-badge{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:30px; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.65); pointer-events:none;}
   .ex-yt-frame{width:100%; aspect-ratio:16/9; border:0; border-radius:8px; margin-bottom:7px; display:block;}
+  .ex-ig-frame{width:100%; height:480px; border:0; border-radius:8px; margin-bottom:7px; display:block; background:var(--surface-2);}
   .ex-warn{padding:8px 14px; font-size:10.5px; color:var(--ink-3); border-bottom:1px solid var(--border); background:var(--surface-2);}
   .src-instagram{color:#E1306C;}
   .src-youtube{color:#FF0000;}
@@ -1560,6 +1561,24 @@
       return null;
     }
 
+    // Pulls the post type (p / reel / tv) and shortcode out of an Instagram
+    // post URL, so it can be embedded inline the same way YouTube is.
+    // Instagram's own embed.js widget works by pointing an iframe at exactly
+    // this /embed URL under the hood -- doing it directly skips needing
+    // their script at all, and it needs no API key or login for public
+    // posts.
+    function instagramEmbedUrl(url){
+      if(!url) return null;
+      try{
+        const u = new URL(url);
+        if(!/(^|\.)instagram\.com$/.test(u.hostname.replace(/^www\./,""))) return null;
+        const m = u.pathname.match(/\/(p|reel|tv)\/([^\/?]+)/);
+        if(!m) return null;
+        return `https://www.instagram.com/${m[1]}/${m[2]}/embed/`;
+      }catch(e){}
+      return null;
+    }
+
     // Renders a saved /experts payload into the card -- used both right
     // after a fresh fetch and when restoring the last fetched result from
     // localStorage (no network call) on page load or on reopening the
@@ -1590,12 +1609,16 @@
           const row = document.createElement("div");
           row.className = "news-item";
 
+          // Figure out whether this item can be played/viewed right inside
+          // the card (YouTube videos and Instagram posts both can; blog
+          // items just link out as before).
           const videoId = item.source_type === "youtube" ? youtubeVideoId(item.url) : null;
+          const igEmbedSrc = item.source_type === "instagram" ? instagramEmbedUrl(item.url) : null;
 
-          if(videoId){
-            // YouTube items get an inline player: click the thumbnail to
-            // watch right here in the card, with a separate "open in new
-            // tab" link next to it for watching on YouTube itself instead.
+          if(videoId || igEmbedSrc){
+            // Click the thumbnail to watch/view right here in the card,
+            // with a separate "open in new tab" link next to it for the
+            // original site instead.
             const thumbWrap = document.createElement("div");
             thumbWrap.className = "ex-thumb-wrap";
             if(item.thumbnail){
@@ -1613,11 +1636,19 @@
             thumbWrap.title = "Play here";
             thumbWrap.addEventListener("click", ()=>{
               const iframe = document.createElement("iframe");
-              iframe.className = "ex-yt-frame";
-              iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`;
-              iframe.title = item.title || "YouTube video";
-              iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-              iframe.allowFullscreen = true;
+              if(videoId){
+                iframe.className = "ex-yt-frame";
+                iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`;
+                iframe.title = item.title || "YouTube video";
+                iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+                iframe.allowFullscreen = true;
+              }else{
+                iframe.className = "ex-ig-frame";
+                iframe.src = igEmbedSrc;
+                iframe.title = item.title || "Instagram post";
+                iframe.allow = "encrypted-media; clipboard-write";
+                iframe.scrolling = "no";
+              }
               thumbWrap.replaceWith(iframe);
             });
 
@@ -1641,7 +1672,7 @@
             openLink.href = item.url || "#";
             openLink.target = "_blank"; openLink.rel = "noopener noreferrer";
             openLink.textContent = "↗ Open in new tab";
-            openLink.title = "Open on YouTube in a new tab";
+            openLink.title = videoId ? "Open on YouTube in a new tab" : "Open on Instagram in a new tab";
             row2.appendChild(openLink);
 
             row.appendChild(thumbWrap); row.appendChild(title); row.appendChild(meta); row.appendChild(row2);
