@@ -232,7 +232,11 @@ def _fetch_instagram_via_thirdparty(username):
                 # free up rather than failing immediately.
                 time.sleep(_APIFY_RETRY_WAIT_SECONDS * (attempt + 1))
 
-    if status != 200:
+    # Apify's run-sync-get-dataset-items endpoint responds 201 (Created) on
+    # a successful run, not 200 -- both mean "here's your data", so both
+    # count as success here. Treating 201 as a failure was the bug: real
+    # scraped posts were coming back every time, just getting thrown away.
+    if status not in (200, 201):
         snippet = resp_body.decode("utf-8", "replace")[:160].strip()
         return None, f"third-party API returned HTTP {status}: {snippet}"
 
