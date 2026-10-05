@@ -40,6 +40,7 @@ import sys
 import os
 import json
 import time
+import threading
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -185,6 +186,20 @@ def _apify_configured():
                 and common.env("IG_THIRDPARTY_MEDIA_PATH") and common.env("IG_THIRDPARTY_MEDIA_BODY"))
 
 
+# Apify's free/standard plan caps you at 5 concurrent Actor runs for the
+# *whole account* -- shared across every app that uses it, not just this
+# one (e.g. your "Gridly" project's own scraping can eat into the same
+# quota). Parallelizing all 5 Instagram accounts at once (see
+# _fetch_all_sources) fixed the earlier timeout, but it also meant this
+# code alone could launch 5 runs simultaneously and trip that limit by
+# itself. This semaphore caps how many of *our own* Apify runs are ever in
+# flight together, leaving some headroom for other things using the same
+# Apify account.
+_APIFY_CONCURRENCY = threading.Semaphore(3)
+_APIFY_RETRY_WAIT_SECONDS = 4
+_APIFY_MAX_ATTEMPTS = 3
+
+
 def _fetch_instagram_via_thirdparty(username):
     base = common.env("IG_THIRDPARTY_BASE_URL").rstrip("/")
     key_header = common.env("IG_THIRDPARTY_KEY_HEADER") or "authorization"
@@ -201,7 +216,22 @@ def _fetch_instagram_via_thirdparty(username):
 
     url = base + path
     headers = {key_header: key_val, "Content-Type": "application/json"}
-    status, resp_body = _http_request(method, url, headers=headers, body_bytes=body_str.encode())
+
+    status, resp_body = 599, b""
+    with _APIFY_CONCURRENCY:
+        for attempt in range(_APIFY_MAX_ATTEMPTS):
+            status, resp_body = _http_request(method, url, headers=headers, body_bytes=body_str.encode())
+            is_concurrency_limit = (
+                status == 402 and b"concurrent-runs-limit-exceeded" in resp_body
+            )
+            if not is_concurrency_limit:
+                break
+            if attempt < _APIFY_MAX_ATTEMPTS - 1:
+                # Another run (ours or another app's, on the same Apify
+                # account) is still using the slot -- wait a bit for one to
+                # free up rather than failing immediately.
+                time.sleep(_APIFY_RETRY_WAIT_SECONDS * (attempt + 1))
+
     if status != 200:
         snippet = resp_body.decode("utf-8", "replace")[:160].strip()
         return None, f"third-party API returned HTTP {status}: {snippet}"
