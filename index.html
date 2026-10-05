@@ -274,6 +274,17 @@
     max-height:none; height:94vh;
   }
   .cv-float .news-float-body{ padding:0; }
+  .cv-search-row{ display:flex; gap:6px; padding:8px 10px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .cv-search-input{
+    flex:1; min-width:0; padding:6px 9px; border:1px solid var(--border); border-radius:7px;
+    background:var(--bg); color:var(--ink); font-size:12.5px;
+  }
+  .cv-search-btn{
+    flex-shrink:0; padding:6px 11px; border:1px solid var(--border); border-radius:7px;
+    background:var(--surface-2); color:var(--ink); cursor:pointer; font-size:13px;
+  }
+  .cv-search-btn:hover{ background:var(--border); }
+  .cv-float.maximized .cv-search-row{ padding:10px 14px; }
   .cv-float.minimized .cv-float-body, .cv-float.minimized .news-float-foot{ display:none; }
   .cv-float.minimized{ max-height:none; }
   .cv-float-body{ flex:1; min-height:280px; display:flex; }
@@ -596,6 +607,10 @@
       <button type="button" class="nf-btn" id="cvCloseBtn" title="Close">×</button>
     </div>
   </div>
+  <form class="cv-search-row" id="cvSearchForm">
+    <input type="text" class="cv-search-input" id="cvSearchInput" placeholder="Search a coin or token — e.g. BTC, SOL, PEPE" autocomplete="off" spellcheck="false">
+    <button type="submit" class="cv-search-btn" id="cvSearchBtn" title="Show this coin's chart">🔍</button>
+  </form>
   <div class="cv-float-body" id="cvFloatBody">
     <div class="cv-widget-wrap" id="cvWidgetWrap"></div>
   </div>
@@ -633,7 +648,7 @@
       chatgptBtcUrl: "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5",
       newsFloat: {open:true, minimized:false, x:null, y:null},
       expertsFloat: {open:false, minimized:false, x:null, y:null, cache:null},
-      cvFloat: {open:false, minimized:false, maximized:false, x:null, y:null, widget:"heatmap"},
+      cvFloat: {open:false, minimized:false, maximized:false, x:null, y:null, widget:"heatmap", symbol:"BINANCE:BTCUSDT"},
       binance: {holdings:[], totalUsd:0, lastSync:null, error:null},
       okx: {holdings:[], totalUsd:0, orders:[], lastSync:null, error:null},
       costBasis: {binance:{}, okx:{}},
@@ -1881,8 +1896,11 @@
     const minBtn = $("cvMinBtn");
     const closeBtn = $("cvCloseBtn");
     const launcher = $("cvLauncher");
+    const searchForm = $("cvSearchForm");
+    const searchInput = $("cvSearchInput");
 
-    const cv = state.cvFloat || (state.cvFloat = {open:false, minimized:false, maximized:false, x:null, y:null, widget:"heatmap"});
+    const cv = state.cvFloat || (state.cvFloat = {open:false, minimized:false, maximized:false, x:null, y:null, widget:"heatmap", symbol:"BINANCE:BTCUSDT"});
+    if(!cv.symbol) cv.symbol = "BINANCE:BTCUSDT";
 
     const CV_WIDGETS = [
       {
@@ -1921,6 +1939,20 @@
           showSymbolLogo: true, isTransparent: false, displayMode: "adaptive", colorTheme: "dark", locale: "en"
         },
         openUrl: "https://www.tradingview.com/markets/cryptocurrencies/prices-all/"
+      },
+      {
+        key: "chart",
+        label: "📈 Chart",
+        scriptSrc: "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js",
+        // Symbol depends on what was searched, so this is a function
+        // (evaluated fresh in loadWidget) instead of a fixed object like
+        // the other three widgets.
+        config: () => ({
+          autosize: true, symbol: cv.symbol, interval: "60", timezone: "Etc/UTC",
+          theme: "dark", style: "1", locale: "en", allow_symbol_change: true,
+          hide_side_toolbar: false, support_host: "https://www.tradingview.com"
+        }),
+        openUrl: () => `https://www.tradingview.com/symbols/${(cv.symbol.split(":")[1] || "BTCUSDT")}/`
       }
     ];
     const CV_BY_KEY = Object.fromEntries(CV_WIDGETS.map(w=>[w.key, w]));
@@ -1933,10 +1965,15 @@
     });
     if(!CV_BY_KEY[cv.widget]) cv.widget = "heatmap";
     select.value = cv.widget;
+    // Prefill the search box with whatever coin was last searched, so
+    // reopening the card doesn't leave it blank next to an active chart.
+    searchInput.value = (cv.symbol.split(":")[1] || "").replace(/USDT$/, "");
 
     function loadWidget(key){
       const w = CV_BY_KEY[key] || CV_WIDGETS[0];
-      openBtn.href = w.openUrl;
+      const cfg = typeof w.config === "function" ? w.config() : w.config;
+      const url = typeof w.openUrl === "function" ? w.openUrl() : w.openUrl;
+      openBtn.href = url;
       wrap.innerHTML = "";
       const container = document.createElement("div");
       container.className = "tradingview-widget-container";
@@ -1952,7 +1989,7 @@
       const script = document.createElement("script");
       script.src = w.scriptSrc;
       script.async = true;
-      script.text = JSON.stringify(w.config);
+      script.text = JSON.stringify(cfg);
       container.appendChild(script);
       wrap.dataset.loadedWidget = key;
     }
@@ -1961,6 +1998,28 @@
       cv.widget = select.value;
       persist();
       loadWidget(cv.widget);
+    });
+
+    // Turns whatever someone types ("btc", "$SOL", "pepe-coin") into a
+    // Binance USDT trading pair ticker. Strips a quote-currency suffix if
+    // they already included one, so "BTC" and "BTCUSDT" both resolve the
+    // same way.
+    function normalizeTicker(raw){
+      let t = (raw || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if(!t) return null;
+      t = t.replace(/(USDT|USDC|BUSD|USD)$/, "") || t;
+      return t || null;
+    }
+
+    searchForm.addEventListener("submit", (e)=>{
+      e.preventDefault();
+      const ticker = normalizeTicker(searchInput.value);
+      if(!ticker) return;
+      cv.symbol = `BINANCE:${ticker}USDT`;
+      cv.widget = "chart";
+      select.value = "chart";
+      persist();
+      loadWidget("chart");
     });
 
     function applyPosition(){
