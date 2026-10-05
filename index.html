@@ -514,7 +514,7 @@
     </div>
   </div>
   <div class="news-float-body" id="expertsFloatBody">
-    <div class="news-float-status" id="expertsFloatStatus">Loading…</div>
+    <div class="news-float-status" id="expertsFloatStatus">Tap ⟳ above to load crypto experts.</div>
   </div>
   <div class="news-float-foot">Instagram, YouTube &amp; blogs from a hand-picked list · via this deployment's /experts route · manual refresh only, to limit Apify usage — <span id="expertsLastUpdated">not loaded yet</span></div>
 </div>
@@ -1492,8 +1492,10 @@
     minBtn.addEventListener("click", ()=>{ ef.minimized = !ef.minimized; applyMinState(); persist(); });
     closeBtn.addEventListener("click", ()=>{ ef.open = false; applyOpenState(); persist(); });
     launcher.addEventListener("click", ()=>{
+      // Fully manual: opening the card never fetches on its own. Only the
+      // ⟳ button below triggers a load, so nothing happens here beyond
+      // showing the card.
       ef.open = true; applyOpenState(); clampToViewport(); persist();
-      if(!body.dataset.loaded) loadExperts();
     });
 
     let dragging = false, offX = 0, offY = 0;
@@ -1567,6 +1569,11 @@
         setTimeout(()=>refreshBtn.classList.remove("spin"), 700);
         return;
       }
+      // Instagram's piece of this can be a slow, real Apify scrape, so make
+      // it clear something is happening rather than leaving the old prompt
+      // or old items showing with no feedback.
+      statusEl.textContent = "Loading… (can take a bit — Instagram posts come from a real scrape, not an instant API)";
+      statusEl.style.display = "block";
       try{
         const res = await fetch(base + "/experts");
         const payload = await res.json().catch(()=>({}));
@@ -1695,14 +1702,14 @@
       }
     }
 
-    // No auto-refresh timer here on purpose. Unlike the news card (free
+    // Fully manual, no automatic loading at all. Unlike the news card (free
     // RSS, refreshed every 10 minutes), the Instagram piece of this card
-    // runs a paid Apify scrape per account — refreshing it automatically
-    // in the background would burn through Apify's free monthly credit
-    // without you ever asking for it. So this card only loads once when
-    // you first open it, and otherwise only updates when you press ⟳.
+    // runs a paid Apify scrape per account — loading it automatically,
+    // whether on opening the card or just because it was left open across
+    // a page refresh, would burn through Apify's free monthly credit
+    // without you ever asking for it. So this card never fetches on its
+    // own; it only loads when you press ⟳ yourself, every time.
     refreshBtn.addEventListener("click", loadExperts);
-    if(ef.open) loadExperts();
   })();
 
   renderAll();
