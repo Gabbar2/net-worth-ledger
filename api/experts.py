@@ -39,12 +39,14 @@ from http.server import BaseHTTPRequestHandler
 import sys
 import os
 import json
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from concurrent.futures import ThreadPoolExecutor, wait
 
 _p = os.path.dirname(os.path.abspath(__file__))
 while not os.path.exists(os.path.join(_p, "_common.py")):
@@ -232,28 +234,24 @@ def _fetch_instagram_via_thirdparty(username):
     return items, None
 
 
-def _fetch_instagram(notes):
-    items = []
-    apify_ready = _apify_configured()
+def _fetch_instagram_account(username, apify_ready):
+    """One account's worth of work -- run per-account in its own thread (see
+    _fetch_all_sources below) since each Apify fallback call is a real,
+    slow scrape, and doing all 5 of these one after another in sequence is
+    what used to blow past Vercel's function time limit and make the whole
+    card fail with no results at all."""
+    graph_items, graph_fail = _fetch_instagram_via_graph(username)
+    if graph_items is not None:
+        return graph_items, None
 
-    for username in INSTAGRAM_USERNAMES:
-        graph_items, graph_fail = _fetch_instagram_via_graph(username)
-        if graph_items is not None:
-            items.extend(graph_items)
-            continue
+    if not apify_ready:
+        return [], (f"Instagram @{username}: {graph_fail}, and no third-party fallback is "
+                     f"configured (IG_THIRDPARTY_* environment variables).")
 
-        if not apify_ready:
-            notes.append(f"Instagram @{username}: {graph_fail}, and no third-party fallback is "
-                          f"configured (IG_THIRDPARTY_* environment variables).")
-            continue
-
-        tp_items, tp_fail = _fetch_instagram_via_thirdparty(username)
-        if tp_items is not None:
-            items.extend(tp_items)
-        else:
-            notes.append(f"Instagram @{username}: {tp_fail}")
-
-    return items
+    tp_items, tp_fail = _fetch_instagram_via_thirdparty(username)
+    if tp_items is not None:
+        return tp_items, None
+    return [], f"Instagram @{username}: {tp_fail}"
 
 
 # ---------------------------------------------------------------------------
@@ -301,19 +299,36 @@ def _parse_youtube_feed(display_name, xml_bytes):
     return items
 
 
-def _fetch_youtube(notes):
-    items = []
-    for display_name, channel_id in YOUTUBE_CHANNELS:
+def _fetch_youtube_feed_with_retry(channel_id, attempts=3):
+    """YouTube's feeds/videos.xml endpoint has a known, unresolved flakiness
+    issue (documented in YouTube's own developer forum) where a perfectly
+    valid, active channel intermittently 404s for a few minutes at a time --
+    nothing to do with the channel ID being wrong. A couple of quick retries
+    with a fresh connection clears most of these. Returns (status, body) from
+    the last attempt."""
+    last = (599, b"")
+    for i in range(attempts):
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-        try:
-            status, body = common.http_get(url)
-            if status != 200:
-                notes.append(f"YouTube ({display_name}): HTTP {status}")
-                continue
-            items.extend(_parse_youtube_feed(display_name, body))
-        except Exception:
-            notes.append(f"YouTube ({display_name}): couldn't load this channel's feed.")
-    return items
+        status, body = common.http_get(url)
+        if status == 200:
+            return status, body
+        last = (status, body)
+        if i < attempts - 1:
+            time.sleep(0.6 * (i + 1))  # brief backoff, stays well inside the function's timeout
+    return last
+
+
+def _fetch_youtube_channel(display_name, channel_id):
+    try:
+        status, body = _fetch_youtube_feed_with_retry(channel_id)
+        if status != 200:
+            return [], (f"YouTube ({display_name}): HTTP {status} — this is usually a "
+                         f"temporary glitch on YouTube's side (their RSS endpoint is known "
+                         f"to 404 active channels for a few minutes at a time); try ⟳ again "
+                         f"shortly.")
+        return _parse_youtube_feed(display_name, body), None
+    except Exception:
+        return [], f"YouTube ({display_name}): couldn't load this channel's feed."
 
 
 # ---------------------------------------------------------------------------
@@ -357,18 +372,69 @@ def _parse_blog_feed(display_name, xml_bytes):
     return items
 
 
-def _fetch_blogs(notes):
-    items = []
-    for display_name, url in BLOG_FEEDS:
-        try:
-            status, body = common.http_get(url)
-            if status != 200:
-                notes.append(f"{display_name}: HTTP {status}")
-                continue
-            items.extend(_parse_blog_feed(display_name, body))
-        except Exception:
-            notes.append(f"{display_name}: couldn't load this feed.")
-    return items
+def _fetch_blog(display_name, url):
+    try:
+        status, body = common.http_get(url)
+        if status != 200:
+            return [], f"{display_name}: HTTP {status}"
+        return _parse_blog_feed(display_name, body), None
+    except Exception:
+        return [], f"{display_name}: couldn't load this feed."
+
+
+# Overall budget for the whole /experts request. Kept comfortably under the
+# 60s maxDuration in vercel.json -- if your Vercel plan is capped lower than
+# that (the Hobby plan hard-caps every function at 10s no matter what
+# vercel.json says), everything below will still *start* in parallel, it
+# just won't all finish before Vercel kills the function. There's nothing
+# this code can do about that specific limit -- it's enforced by Vercel
+# itself, not something a setting in this file can raise.
+OVERALL_BUDGET_SECONDS = 45
+
+
+def _fetch_all_sources(notes):
+    """Every account/channel/feed is fetched in its own thread, all at once,
+    instead of one after another. With 5 Instagram accounts each potentially
+    doing a slow, real Apify scrape (not an instant API call), fetching them
+    in sequence could easily take over a minute combined -- comfortably
+    past Vercel's function time limit, which is exactly why a manual
+    refresh was coming back as a flat "couldn't load experts" with no
+    results at all rather than a partial list. Running them concurrently
+    means the whole request takes roughly as long as the *slowest single*
+    account/channel/feed, not the sum of all of them."""
+    apify_ready = _apify_configured()
+    tasks = []
+    tasks.extend(("instagram", username, _fetch_instagram_account, (username, apify_ready))
+                 for username in INSTAGRAM_USERNAMES)
+    tasks.extend(("youtube", name, _fetch_youtube_channel, (name, cid))
+                 for name, cid in YOUTUBE_CHANNELS)
+    tasks.extend(("blog", name, _fetch_blog, (name, url))
+                 for name, url in BLOG_FEEDS)
+
+    all_items = []
+    with ThreadPoolExecutor(max_workers=max(1, len(tasks))) as pool:
+        future_to_label = {
+            pool.submit(fn, *args): (kind, label) for kind, label, fn, args in tasks
+        }
+        done, not_done = wait(future_to_label.keys(), timeout=OVERALL_BUDGET_SECONDS)
+
+        for fut in done:
+            kind, label = future_to_label[fut]
+            try:
+                items, note = fut.result()
+                all_items.extend(items)
+                if note:
+                    notes.append(note)
+            except Exception as e:
+                notes.append(f"{label}: {e}")
+
+        for fut in not_done:
+            kind, label = future_to_label[fut]
+            notes.append(f"{label}: still running when this request's time budget ran out -- "
+                          f"try ⟳ again (Apify scrapes in particular can be slow).")
+            fut.cancel()
+
+    return all_items
 
 
 class handler(BaseHTTPRequestHandler):
@@ -377,10 +443,7 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         notes = []
-        all_items = []
-        all_items.extend(_fetch_instagram(notes))
-        all_items.extend(_fetch_youtube(notes))
-        all_items.extend(_fetch_blogs(notes))
+        all_items = _fetch_all_sources(notes)
 
         all_items.sort(key=lambda i: i["published_on"] or 0, reverse=True)
 
