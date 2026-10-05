@@ -543,7 +543,7 @@
       proxyToken: "",
       chatgptBtcUrl: "https://chatgpt.com/c/712956d6-ddc2-41cb-98dd-880c5f30e0e5",
       newsFloat: {open:true, minimized:false, x:null, y:null},
-      expertsFloat: {open:false, minimized:false, x:null, y:null},
+      expertsFloat: {open:false, minimized:false, x:null, y:null, cache:null},
       binance: {holdings:[], totalUsd:0, lastSync:null, error:null},
       okx: {holdings:[], totalUsd:0, orders:[], lastSync:null, error:null},
       costBasis: {binance:{}, okx:{}},
@@ -1560,29 +1560,16 @@
       return null;
     }
 
-    async function loadExperts(){
-      refreshBtn.classList.add("spin");
-      const base = expertsBaseUrl();
-      if(!base){
-        statusEl.textContent = "This card needs the hosted version of this dashboard.";
-        statusEl.style.display = "block";
-        setTimeout(()=>refreshBtn.classList.remove("spin"), 700);
-        return;
-      }
-      // Instagram's piece of this can be a slow, real Apify scrape, so make
-      // it clear something is happening rather than leaving the old prompt
-      // or old items showing with no feedback.
-      statusEl.textContent = "Loading… (can take a bit — Instagram posts come from a real scrape, not an instant API)";
-      statusEl.style.display = "block";
-      try{
-        const res = await fetch(base + "/experts");
-        const payload = await res.json().catch(()=>({}));
-        if(!res.ok) throw new Error(payload.error || ("HTTP " + res.status));
-        body.dataset.loaded = "1";
-        $("expertsLastUpdated").textContent = "updated " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-        const items = (payload.items || []).slice(0, 20);
-        body.querySelectorAll(".news-item, .ex-warn").forEach(el=>el.remove());
-        const frag = document.createDocumentFragment();
+    // Renders a saved /experts payload into the card -- used both right
+    // after a fresh fetch and when restoring the last fetched result from
+    // localStorage (no network call) on page load or on reopening the
+    // card, so your Apify quota is only ever spent when you press ⟳.
+    function renderExpertsPayload(payload, updatedLabel){
+      body.dataset.loaded = "1";
+      $("expertsLastUpdated").textContent = updatedLabel;
+      const items = (payload.items || []).slice(0, 20);
+      body.querySelectorAll(".news-item, .ex-warn").forEach(el=>el.remove());
+      const frag = document.createDocumentFragment();
 
         if((payload.notes || []).length){
           const warn = document.createElement("div");
@@ -1694,6 +1681,34 @@
           frag.appendChild(row);
         });
         body.appendChild(frag);
+    }
+
+    async function loadExperts(){
+      refreshBtn.classList.add("spin");
+      const base = expertsBaseUrl();
+      if(!base){
+        statusEl.textContent = "This card needs the hosted version of this dashboard.";
+        statusEl.style.display = "block";
+        setTimeout(()=>refreshBtn.classList.remove("spin"), 700);
+        return;
+      }
+      // Instagram's piece of this can be a slow, real Apify scrape, so make
+      // it clear something is happening rather than leaving the old prompt
+      // or old items showing with no feedback.
+      statusEl.textContent = "Loading… (can take a bit — Instagram posts come from a real scrape, not an instant API)";
+      statusEl.style.display = "block";
+      try{
+        const res = await fetch(base + "/experts");
+        const payload = await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(payload.error || ("HTTP " + res.status));
+        const now = Date.now();
+        const label = "updated " + new Date(now).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+        renderExpertsPayload(payload, label);
+        // Cache the fetched result so reopening the card or reloading the
+        // page shows these same posts instantly, with no new Apify spend,
+        // until you next press ⟳ yourself.
+        ef.cache = {payload, fetchedAt: now};
+        persist();
       }catch(e){
         statusEl.textContent = "Couldn't load experts — tap ⟳ to retry.";
         statusEl.style.display = "block";
@@ -1707,9 +1722,20 @@
     // runs a paid Apify scrape per account — loading it automatically,
     // whether on opening the card or just because it was left open across
     // a page refresh, would burn through Apify's free monthly credit
-    // without you ever asking for it. So this card never fetches on its
-    // own; it only loads when you press ⟳ yourself, every time.
+    // without you ever asking for it. So this card never fetches the
+    // network on its own; it only loads when you press ⟳ yourself, every
+    // time. What it DOES do automatically is restore the last successful
+    // result from localStorage (no network call, no Apify cost) so your
+    // last-fetched posts are still sitting there after a page reload or
+    // after closing and reopening the card.
     refreshBtn.addEventListener("click", loadExperts);
+    if(ef.cache && ef.cache.payload){
+      const age = Date.now() - (ef.cache.fetchedAt || 0);
+      const mins = Math.floor(age / 60000);
+      const ageLabel = mins < 1 ? "just now" : mins < 60 ? (mins + "m ago")
+        : Math.floor(mins/60) < 24 ? (Math.floor(mins/60) + "h ago") : (Math.floor(mins/1440) + "d ago");
+      renderExpertsPayload(ef.cache.payload, "updated " + ageLabel + " (cached, not re-fetched)");
+    }
   })();
 
   renderAll();
