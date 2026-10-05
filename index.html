@@ -184,7 +184,7 @@
   .news-float-head:active{ cursor:grabbing; }
   .news-float-title{position:relative; z-index:1; font-size:13px; font-weight:600; display:flex; align-items:center; gap:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .news-float-actions{position:relative; z-index:1; display:flex; align-items:center; gap:2px; flex-shrink:0;}
-  .nf-btn{width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; background:none; border:none; border-radius:6px; color:var(--ink-2); cursor:pointer; font-size:14px; line-height:1;}
+  .nf-btn{width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; background:none; border:none; border-radius:6px; color:var(--ink-2); cursor:pointer; font-size:14px; line-height:1; text-decoration:none;}
   .nf-btn:hover{background:var(--border); color:var(--ink);}
   .nf-btn.spin{animation:nf-spin .7s linear;}
   @keyframes nf-spin{ to{ transform:rotate(360deg); } }
@@ -508,6 +508,7 @@
     <span class="news-float-title">🧠 Crypto experts</span>
     <div class="news-float-actions">
       <button type="button" class="nf-btn" id="expertsRefreshBtn" title="Refresh">⟳</button>
+      <a class="nf-btn" id="expertsApifyLink" href="https://console.apify.com/actors/runs" target="_blank" rel="noopener noreferrer" title="Check Apify run cost (Console → Runs)">💰</a>
       <button type="button" class="nf-btn" id="expertsMinBtn" title="Minimize">–</button>
       <button type="button" class="nf-btn" id="expertsCloseBtn" title="Close">×</button>
     </div>
