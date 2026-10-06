@@ -266,13 +266,18 @@
     position:fixed; left:calc(50% - 210px); bottom:24px; width:420px; max-width:calc(100vw - 32px);
     background:var(--surface); border:1px solid var(--border); border-radius:14px;
     box-shadow:0 10px 32px rgba(0,0,0,.22); z-index:61; display:flex; flex-direction:column;
-    max-height:min(72vh, 620px); overflow:hidden;
+    /* A real height, not just max-height: TradingView's widgets are built
+       with height:100% all the way down to their iframe, and without a
+       definite ancestor height for that percentage to resolve against,
+       mobile browsers tend to collapse the whole thing to 0px tall --
+       which looked like "the card opens but the widget never shows up". */
+    height:min(72vh, 620px); max-height:min(72vh, 620px); overflow:hidden;
   }
   .cv-float.dragging{ user-select:none; }
   .cv-float.hidden{ display:none; }
   .cv-float.maximized{
     left:3vw; right:3vw; top:3vh; bottom:3vh; width:auto; max-width:none;
-    max-height:none; height:94vh;
+    height:94vh; max-height:none;
   }
   .cv-float .news-float-body{ padding:0; }
   .cv-search-row{ display:flex; gap:6px; padding:8px 10px; border-bottom:1px solid var(--border); flex-shrink:0; }
@@ -287,10 +292,9 @@
   .cv-search-btn:hover{ background:var(--border); }
   .cv-float.maximized .cv-search-row{ padding:10px 14px; }
   .cv-float.minimized .cv-float-body, .cv-float.minimized .news-float-foot{ display:none; }
-  .cv-float.minimized{ max-height:none; }
-  .cv-float-body{ flex:1; min-height:280px; display:flex; }
-  .cv-float.maximized .cv-float-body{ min-height:0; }
-  .cv-widget-wrap{ flex:1; min-width:0; }
+  .cv-float.minimized{ height:auto; max-height:none; }
+  .cv-float-body{ flex:1; min-height:0; display:flex; }
+  .cv-widget-wrap{ flex:1; min-width:0; min-height:0; }
   .cv-select{
     font-size:11px; padding:3px 4px; border-radius:6px; border:1px solid var(--border);
     background:var(--surface); color:var(--ink); max-width:92px; flex-shrink:0;
@@ -1731,7 +1735,6 @@
               const img = document.createElement("img");
               img.className = "ex-thumb";
               img.src = item.thumbnail;
-              img.loading = "lazy";
               img.alt = "";
               thumbWrap.appendChild(img);
             }
@@ -1795,7 +1798,6 @@
             const img = document.createElement("img");
             img.className = "ex-thumb";
             img.src = item.thumbnail;
-            img.loading = "lazy";
             img.alt = "";
             titleLink.appendChild(img);
           }
@@ -1976,12 +1978,19 @@
       const url = typeof w.openUrl === "function" ? w.openUrl() : w.openUrl;
       openBtn.href = url;
       wrap.innerHTML = "";
+      // Use a real measured pixel height here instead of "100%": TradingView's
+      // own markup is built with height:100% all the way down to its iframe,
+      // which depends on every ancestor having a *definite* height for that
+      // percentage to resolve against. The CSS above now provides one, but
+      // measuring it directly here is extra insurance against the blank-
+      // widget bug some mobile browsers show with percentage-height chains.
+      const h = wrap.clientHeight || 280;
       const container = document.createElement("div");
       container.className = "tradingview-widget-container";
-      container.style.cssText = "width:100%; height:100%;";
+      container.style.cssText = `width:100%; height:${h}px;`;
       const inner = document.createElement("div");
       inner.className = "tradingview-widget-container__widget";
-      inner.style.cssText = "width:100%; height:100%;";
+      inner.style.cssText = `width:100%; height:${h}px;`;
       container.appendChild(inner);
       wrap.appendChild(container);
       // TradingView's widgets self-initialize off this script tag -- it has
