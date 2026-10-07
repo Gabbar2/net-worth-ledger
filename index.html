@@ -1521,14 +1521,46 @@
           explain.href = chatgptBtcUrl();
           explain.addEventListener("click", (e)=>{
             e.preventDefault();
+
+            // Open the tab immediately from the click so popup blockers allow it.
+            const chatTab = window.open("about:blank", "_blank");
+
+            // Try synchronous copy first.
             const copied = copyTextSync(prompt);
-            if(!copied && navigator.clipboard && navigator.clipboard.writeText){
-              navigator.clipboard.writeText(prompt).catch(()=>{});
+
+            const openChat = ()=>{
+              if(chatTab && !chatTab.closed){
+                chatTab.opener = null;
+                chatTab.location.href = chatgptBtcUrl();
+              }else{
+                window.location.href = chatgptBtcUrl();
+              }
+            };
+
+            if(copied){
+              toast("Question copied — paste it into ChatGPT");
+              openChat();
+              return;
             }
-            window.open(chatgptBtcUrl(), "_blank", "noopener,noreferrer");
+
+            // Fallback to the modern Clipboard API if sync copy fails.
+            if(navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(prompt)
+                .then(()=>{
+                  toast("Question copied — paste it into ChatGPT");
+                  openChat();
+                })
+                .catch(()=>{
+                  toast("ChatGPT opened — copy the question manually if needed");
+                  openChat();
+                });
+            }else{
+              toast("ChatGPT opened — copy the question manually if needed");
+              openChat();
+            }
           });
           explain.textContent = "💬 Explain";
-          explain.title = "Ask ChatGPT (BTC project) to explain this in simple words";
+          explain.title = "Open ChatGPT — the complete question is copied for you to paste";
 
           row2.appendChild(dots); row2.appendChild(explain);
           row.appendChild(titleLink); row.appendChild(meta); row.appendChild(row2);
