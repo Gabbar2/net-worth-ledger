@@ -9,18 +9,22 @@
 # Bright Data's dataset API is asynchronous: a request first *triggers* a
 # collection job and gets back a snapshot_id, then you poll that job's
 # progress, then you download the finished snapshot once it's ready. A
-# full run can take anywhere from a few seconds to over a minute --
+# 5-account run has been observed taking around 1-2 minutes to finish --
 # comfortably past Vercel's hard 10-second function cap on the Hobby plan
 # -- so this route does NOT sit and block waiting for the job to finish.
 # Instead:
-#   - A tap with no ?resume= triggers a brand-new (billable) job, polls it
-#     briefly, and either returns results immediately (if Bright Data
-#     happens to finish fast) or returns right away with a "still
-#     processing" note plus that job's snapshot_id.
-#   - The dashboard remembers that snapshot_id and sends it back as
-#     ?resume=<snapshot_id> the next time you tap the same button, so a
-#     second tap resumes checking the SAME job instead of starting a new
-#     one and paying for it twice.
+#   - A request with no ?resume= triggers a brand-new (billable) job,
+#     polls it briefly (a couple of quick checks, a few seconds total --
+#     deliberately short, to leave headroom under that 10-second cap), and
+#     either returns results immediately (if Bright Data happens to finish
+#     fast) or returns right away with a "still processing" note plus that
+#     job's snapshot_id.
+#   - The dashboard (net-worth-ledger.html) remembers that snapshot_id and
+#     sends it back as ?resume=<snapshot_id> on its own, automatically,
+#     roughly every 10 seconds for a couple of minutes, until this route
+#     reports the job ready -- so in practice you tap "BD" once and the
+#     card fills in on its own a minute or two later, without needing to
+#     tap it again and again.
 #
 # One honest caveat: Bright Data's own docs don't publish the exact field
 # names inside a profile record's embedded "posts" list, so the field
