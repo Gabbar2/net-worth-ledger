@@ -30,6 +30,8 @@ from http.server import BaseHTTPRequestHandler
 import sys
 import os
 import json
+import time
+import threading
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -60,6 +62,31 @@ TWITTER_USERNAMES = [
 TWEETS_PER_ACCOUNT = 3
 OVERALL_BUDGET_SECONDS = 20
 
+# twitterapi.io's free tier caps requests at 1 per 5 seconds, account-wide
+# -- not per endpoint. Resolving one account now takes TWO calls (user/info
+# then last_tweets), so without pacing, those two calls alone would trip
+# the limit back-to-back even for a single handle with nobody "refreshing
+# too fast." This lock + timestamp serializes every call this route makes
+# (across every account, even when they're being fetched in parallel
+# threads) so consecutive calls are always spaced out enough. One real
+# cost of this: wall-clock time now scales directly with the number of
+# configured handles (~2 calls x ~5.2s each per account, serialized), so
+# a long TWITTER_USERNAMES list can run into Vercel's function time limit
+# -- especially the Hobby plan's hard 10-second cap, which fits one
+# account comfortably but not several.
+_RATE_LIMIT_SECONDS = 5.2
+_rate_lock = threading.Lock()
+_last_call_at = [0.0]
+
+
+def _rate_limited_wait():
+    with _rate_lock:
+        now = time.monotonic()
+        remaining = _last_call_at[0] + _RATE_LIMIT_SECONDS - now
+        if remaining > 0:
+            time.sleep(remaining)
+        _last_call_at[0] = time.monotonic()
+
 
 def _twitterapi_configured():
     return bool(common.env("TWITTERAPI_IO_KEY"))
@@ -79,18 +106,30 @@ def _parse_created_at(value):
         return None
 
 
-def _twitterapi_get(path, params, api_key):
+def _twitterapi_get(path, params, api_key, _retried=False):
+    _rate_limited_wait()
     url = f"https://api.twitterapi.io{path}?" + urllib.parse.urlencode(params)
     headers = dict(common.BROWSER_HEADERS)
     headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status, resp.read()
+            status, body = resp.status, resp.read()
     except urllib.error.HTTPError as e:
-        return e.code, e.read()
+        status, body = e.code, e.read()
     except Exception as e:
         return 599, json.dumps({"error": str(e)}).encode()
+
+    # A 429 here means some call outside this route's own pacing also hit
+    # twitterapi.io at the same moment (e.g. you tapped ⟳ again while a
+    # previous fetch was still in flight). One wait-and-retry generally
+    # clears it without surfacing a confusing rate-limit error for what's
+    # otherwise a perfectly normal single refresh.
+    if status == 429 and not _retried:
+        time.sleep(_RATE_LIMIT_SECONDS)
+        return _twitterapi_get(path, params, api_key, _retried=True)
+
+    return status, body
 
 
 def _resolve_user_id(username, api_key):
