@@ -54,7 +54,7 @@ import _common as common
 # placeholder/guessed accounts as if they were your picks.
 # ---------------------------------------------------------------------------
 TWITTER_USERNAMES = [
-     "waqarzaka",
+    # "waqarzaka",
 ]
 
 TWEETS_PER_ACCOUNT = 3
@@ -106,21 +106,47 @@ def _fetch_tweets_for_account(username):
     if data.get("status") == "error":
         return [], f"@{username}: {data.get('message') or 'twitterapi.io reported an error'}"
 
+    raw_tweets = data.get("tweets") or []
+    # twitterapi.io returned a 200 with status != "error" but an empty
+    # `tweets` array -- this is NOT a code bug, it's twitterapi.io telling
+    # us (quietly) it found nothing for this handle. The two common causes:
+    # the handle is misspelled/doesn't exist, or it does exist but
+    # twitterapi.io resolved it to a user with zero tweets visible to it
+    # (suspended, protected/private, or brand-new with no posts). Surface
+    # this explicitly instead of silently returning nothing, which is what
+    # was happening before and made this indistinguishable from "it's
+    # working, there's just nothing new."
+    if not raw_tweets:
+        return [], (f"@{username}: twitterapi.io returned 0 tweets for this handle — double-check "
+                     f"the spelling in TWITTER_USERNAMES, and that the account exists, isn't "
+                     f"suspended, and isn't set to private.")
+
     items = []
-    for t in (data.get("tweets") or [])[:TWEETS_PER_ACCOUNT]:
+    dropped = 0
+    for t in raw_tweets[:TWEETS_PER_ACCOUNT]:
         if not isinstance(t, dict):
+            dropped += 1
             continue
         text = (t.get("text") or "").strip()
         tweet_id = t.get("id") or ""
+        url = t.get("url") or (f"https://x.com/{username}/status/{tweet_id}" if tweet_id else None)
+        if not url:
+            dropped += 1
+            continue
         items.append({
             "source_type": "twitter",
             "expert": f"@{username}",
             "title": text[:280] if text else f"New post from @{username}",
-            "url": t.get("url") or (f"https://x.com/{username}/status/{tweet_id}" if tweet_id else None),
+            "url": url,
             "thumbnail": None,  # twitterapi.io's last_tweets response documents no media field
             "published_on": _parse_created_at(t.get("createdAt")),
         })
-    return [it for it in items if it["url"]], None
+
+    if not items and dropped:
+        return [], (f"@{username}: twitterapi.io returned {dropped} tweet(s) but none had a "
+                     f"usable id/url field — twitterapi.io's response shape may have changed; "
+                     f"this needs the parsing in tweets.py adjusted.")
+    return items, None
 
 
 def _fetch_all(notes):
