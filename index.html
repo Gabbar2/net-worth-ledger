@@ -1980,19 +1980,38 @@
     // Data instead of the usual Graph API → Apify chain, for when Apify's
     // monthly credit runs out. It never runs on its own and never replaces
     // the main ⟳ button above; it only swaps in Bright Data's Instagram
-    // results the moment you tap it, leaving YouTube/blog items in the
-    // card untouched. Bright Data's dataset API is async (trigger → poll →
-    // download), so a single tap can come back saying "still processing" —
-    // tap BD again in a bit and it resumes the SAME job via ?resume=,
-    // rather than starting a new (billable) one.
+    // results the moment it finishes, leaving YouTube/blog items untouched.
+    //
+    // Bright Data's dataset job for 5 accounts genuinely takes ~1–2 minutes
+    // to finish server-side, which is longer than any single Vercel
+    // function call can sit and wait for (especially on the Hobby plan's
+    // hard 10-second cap). So one tap of "BD" no longer means "check once
+    // and give up" — it kicks off a short background poll loop right here
+    // in the browser: every ~10 seconds it calls /experts-brightdata again
+    // with ?resume=<snapshot_id>, which just checks the SAME job (no new
+    // billable run) until it reports ready, up to a few minutes' worth of
+    // attempts. Tapping BD again at any point cancels the current loop and
+    // starts fresh; closing the card does the same.
     // ---------------------------------------------------------------------
     if(bdBtn){
       setCountBadge(bdBtn, monthlyCount("experts-brightdata"));
 
-      async function loadExpertsViaBrightData(){
+      const BD_AUTO_POLL_DELAY_MS = 10000;
+      const BD_AUTO_POLL_MAX_ATTEMPTS = 12; // ~2 minutes of background checking
+      let bdAutoPollTimer = null;
+      let bdAutoPollAttempt = 0;
+
+      function stopBdAutoPoll(){
+        if(bdAutoPollTimer){ clearTimeout(bdAutoPollTimer); bdAutoPollTimer = null; }
+        bdAutoPollAttempt = 0;
+      }
+
+      async function checkBrightData(isAutoPoll){
         bdBtn.classList.add("spin");
-        const count = bumpMonthlyCount("experts-brightdata");
-        setCountBadge(bdBtn, count);
+        if(!isAutoPoll){
+          const count = bumpMonthlyCount("experts-brightdata");
+          setCountBadge(bdBtn, count);
+        }
         const base = expertsBaseUrl();
         if(!base){
           statusEl.textContent = "This card needs the hosted version of this dashboard.";
@@ -2000,7 +2019,9 @@
           setTimeout(()=>bdBtn.classList.remove("spin"), 700);
           return;
         }
-        statusEl.textContent = "Loading Instagram via Bright Data… (optional alternate source — async, can take a bit)";
+        statusEl.textContent = isAutoPoll
+          ? `Bright Data is still scraping Instagram… auto-checking (attempt ${bdAutoPollAttempt}/${BD_AUTO_POLL_MAX_ATTEMPTS}) — this card will update itself, no need to tap again.`
+          : "Loading Instagram via Bright Data… (optional alternate source — a real scrape job, usually finishes in 1–2 minutes)";
         statusEl.style.display = "block";
         try{
           const qs = ef.bdPendingSnapshot ? ("?resume=" + encodeURIComponent(ef.bdPendingSnapshot)) : "";
@@ -2012,11 +2033,22 @@
           persist();
 
           if(ef.bdPendingSnapshot){
-            statusEl.textContent = "Bright Data is still scraping Instagram — tap BD again shortly; "
-              + "it'll pick up this same job instead of starting a new one.";
-            statusEl.style.display = "block";
+            bdAutoPollAttempt += 1;
+            if(bdAutoPollAttempt <= BD_AUTO_POLL_MAX_ATTEMPTS){
+              statusEl.textContent = `Bright Data is still scraping Instagram… auto-checking again in `
+                + `${Math.round(BD_AUTO_POLL_DELAY_MS/1000)}s (attempt ${bdAutoPollAttempt}/${BD_AUTO_POLL_MAX_ATTEMPTS}).`;
+              statusEl.style.display = "block";
+              bdAutoPollTimer = setTimeout(()=>checkBrightData(true), BD_AUTO_POLL_DELAY_MS);
+            }else{
+              statusEl.textContent = "Bright Data is taking longer than usual — tap BD to keep checking "
+                + "this same job whenever you're ready.";
+              statusEl.style.display = "block";
+              stopBdAutoPoll();
+            }
             return;
           }
+
+          stopBdAutoPoll();
 
           if((payload.items || []).length){
             const current = (ef.cache && ef.cache.payload && ef.cache.payload.items) || [];
@@ -2032,13 +2064,19 @@
             statusEl.style.display = "block";
           }
         }catch(e){
+          stopBdAutoPoll();
           statusEl.textContent = "Couldn't load via Bright Data — tap BD to retry.";
           statusEl.style.display = "block";
         }finally{
           setTimeout(()=>bdBtn.classList.remove("spin"), 700);
         }
       }
-      bdBtn.addEventListener("click", loadExpertsViaBrightData);
+
+      bdBtn.addEventListener("click", ()=>{
+        stopBdAutoPoll();
+        checkBrightData(false);
+      });
+      closeBtn.addEventListener("click", stopBdAutoPoll);
     }
   })();
 
