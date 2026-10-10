@@ -54,7 +54,7 @@ import _common as common
 # placeholder/guessed accounts as if they were your picks.
 # ---------------------------------------------------------------------------
 TWITTER_USERNAMES = [
-    "ZakaWaqar",
+    # "waqarzaka",
 ]
 
 TWEETS_PER_ACCOUNT = 3
@@ -79,20 +79,58 @@ def _parse_created_at(value):
         return None
 
 
-def _fetch_tweets_for_account(username):
-    api_key = common.env("TWITTERAPI_IO_KEY")
-    url = ("https://api.twitterapi.io/twitter/user/last_tweets?"
-           + urllib.parse.urlencode({"userName": username}))
+def _twitterapi_get(path, params, api_key):
+    url = f"https://api.twitterapi.io{path}?" + urllib.parse.urlencode(params)
     headers = dict(common.BROWSER_HEADERS)
     headers["X-API-Key"] = api_key
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            status, body = resp.status, resp.read()
+            return resp.status, resp.read()
     except urllib.error.HTTPError as e:
-        status, body = e.code, e.read()
+        return e.code, e.read()
     except Exception as e:
-        return [], f"@{username}: couldn't reach twitterapi.io ({e})"
+        return 599, json.dumps({"error": str(e)}).encode()
+
+
+def _resolve_user_id(username, api_key):
+    """Looks up the account's numeric user id via twitterapi.io's user/info
+    endpoint first. Their own docs mark userId (not userName) as the
+    *recommended* way to call last_tweets -- a username-based lookup can
+    quietly come back with 0 tweets for an account that has been renamed
+    or has any other username/id mismatch on their side, with no error to
+    explain why. This also lets us tell "account genuinely suspended"
+    apart from "wrong handle" apart from "right handle, API just found
+    nothing," which a bare 0-tweets response can't distinguish.
+    Returns (user_id, failure_reason)."""
+    status, body = _twitterapi_get("/twitter/user/info", {"userName": username}, api_key)
+    if status != 200:
+        snippet = body.decode("utf-8", "replace")[:160].strip()
+        return None, f"@{username}: twitterapi.io returned HTTP {status} looking up this handle: {snippet}"
+    try:
+        data = json.loads(body)
+    except Exception:
+        return None, f"@{username}: twitterapi.io's user lookup returned a non-JSON response"
+    if data.get("status") == "error":
+        return None, f"@{username}: {data.get('msg') or data.get('message') or 'handle not found on twitterapi.io'}"
+    info = data.get("data") or {}
+    if info.get("unavailable"):
+        reason = info.get("unavailableReason") or info.get("message") or "unavailable"
+        return None, f"@{username}: this account is {reason} on X — twitterapi.io can't fetch its tweets."
+    user_id = info.get("id")
+    if not user_id:
+        return None, f"@{username}: twitterapi.io's user lookup had no id in its response"
+    return user_id, None
+
+
+def _fetch_tweets_for_account(username):
+    api_key = common.env("TWITTERAPI_IO_KEY")
+
+    user_id, resolve_err = _resolve_user_id(username, api_key)
+    if resolve_err:
+        return [], resolve_err
+
+    status, body = _twitterapi_get("/twitter/user/last_tweets", {"userId": user_id}, api_key)
 
     if status != 200:
         snippet = body.decode("utf-8", "replace")[:160].strip()
@@ -107,19 +145,16 @@ def _fetch_tweets_for_account(username):
         return [], f"@{username}: {data.get('message') or 'twitterapi.io reported an error'}"
 
     raw_tweets = data.get("tweets") or []
-    # twitterapi.io returned a 200 with status != "error" but an empty
-    # `tweets` array -- this is NOT a code bug, it's twitterapi.io telling
-    # us (quietly) it found nothing for this handle. The two common causes:
-    # the handle is misspelled/doesn't exist, or it does exist but
-    # twitterapi.io resolved it to a user with zero tweets visible to it
-    # (suspended, protected/private, or brand-new with no posts). Surface
-    # this explicitly instead of silently returning nothing, which is what
-    # was happening before and made this indistinguishable from "it's
-    # working, there's just nothing new."
+    # By this point the handle has already been resolved to a real,
+    # non-suspended account via _resolve_user_id -- so an empty `tweets`
+    # array here genuinely means "this specific account has no recent
+    # tweets visible to twitterapi.io" (protected/private, or just hasn't
+    # posted), rather than a wrong/misspelled handle (that case now fails
+    # earlier, in _resolve_user_id, with a clearer message).
     if not raw_tweets:
-        return [], (f"@{username}: twitterapi.io returned 0 tweets for this handle — double-check "
-                     f"the spelling in TWITTER_USERNAMES, and that the account exists, isn't "
-                     f"suspended, and isn't set to private.")
+        return [], (f"@{username}: account found and isn't suspended, but twitterapi.io returned 0 "
+                     f"recent tweets for it — it may be a protected/private account, or may simply "
+                     f"not have posted anything recently.")
 
     items = []
     dropped = 0
