@@ -54,7 +54,7 @@ import _common as common
 # placeholder/guessed accounts as if they were your picks.
 # ---------------------------------------------------------------------------
 TWITTER_USERNAMES = [
-    "waqarzaka",
+    "zakawaqar",
 ]
 
 TWEETS_PER_ACCOUNT = 3
