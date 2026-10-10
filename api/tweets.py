@@ -57,6 +57,7 @@ import _common as common
 # ---------------------------------------------------------------------------
 TWITTER_USERNAMES = [
     "ZakaWaqar",
+    "elonmusk",
 ]
 
 TWEETS_PER_ACCOUNT = 3
