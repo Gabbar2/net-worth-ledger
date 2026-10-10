@@ -56,7 +56,7 @@ import _common as common
 # placeholder/guessed accounts as if they were your picks.
 # ---------------------------------------------------------------------------
 TWITTER_USERNAMES = [
-    "ZakaWaqar",
+    "zakawaqar",
     "elonmusk",
 ]
 
@@ -184,17 +184,30 @@ def _fetch_tweets_for_account(username):
     if data.get("status") == "error":
         return [], f"@{username}: {data.get('message') or 'twitterapi.io reported an error'}"
 
-    raw_tweets = data.get("tweets") or []
-    # By this point the handle has already been resolved to a real,
-    # non-suspended account via _resolve_user_id -- so an empty `tweets`
-    # array here genuinely means "this specific account has no recent
-    # tweets visible to twitterapi.io" (protected/private, or just hasn't
-    # posted), rather than a wrong/misspelled handle (that case now fails
-    # earlier, in _resolve_user_id, with a clearer message).
+    # Try a few plausible places the tweet list could live -- the publicly
+    # documented shape is a flat top-level "tweets" array, but since even
+    # Elon Musk's account (impossible to have zero real tweets) came back
+    # empty via that path, the live response is evidently shaped
+    # differently than documented. These are the next-most-likely spots.
+    raw_tweets = None
+    if isinstance(data.get("tweets"), list) and data["tweets"]:
+        raw_tweets = data["tweets"]
+    elif isinstance(data.get("data"), dict) and isinstance(data["data"].get("tweets"), list) and data["data"]["tweets"]:
+        raw_tweets = data["data"]["tweets"]
+    elif isinstance(data.get("data"), list) and data["data"]:
+        raw_tweets = data["data"]
+    raw_tweets = raw_tweets or []
+
     if not raw_tweets:
-        return [], (f"@{username}: account found and isn't suspended, but twitterapi.io returned 0 "
-                     f"recent tweets for it — it may be a protected/private account, or may simply "
-                     f"not have posted anything recently.")
+        # Surface the *actual* response shape instead of guessing again --
+        # this tells us definitively whether the tweet list exists under a
+        # different key, or whether twitterapi.io is genuinely sending an
+        # empty result here (e.g. a plan/endpoint mismatch on their end).
+        keys = list(data.keys())
+        raw_snippet = json.dumps(data)[:500]
+        return [], (f"@{username}: account found and isn't suspended, but no tweet list was found "
+                     f"in twitterapi.io's response under any of the expected keys. Top-level keys: "
+                     f"{keys}. Raw response (truncated): {raw_snippet}")
 
     items = []
     dropped = 0
