@@ -5,9 +5,13 @@
     { "source": "/okx/:path*", "destination": "/api/okx/:path*" },
     { "source": "/health", "destination": "/api/health" },
     { "source": "/news", "destination": "/api/news" },
-    { "source": "/experts", "destination": "/api/experts" }
+    { "source": "/experts", "destination": "/api/experts" },
+    { "source": "/experts-brightdata", "destination": "/api/experts_brightdata" },
+    { "source": "/tweets", "destination": "/api/tweets" }
   ],
   "functions": {
-    "api/experts.py": { "maxDuration": 60 }
+    "api/experts.py": { "maxDuration": 60 },
+    "api/experts_brightdata.py": { "maxDuration": 30 },
+    "api/tweets.py": { "maxDuration": 30 }
   }
 }
