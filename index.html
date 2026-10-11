@@ -198,6 +198,21 @@
     border-radius:7px; background:var(--focus); color:#fff; font-size:9px; font-weight:700;
     line-height:14px; text-align:center; box-shadow:0 0 0 2px var(--surface); pointer-events:none;
   }
+  /* tooltip that shows a LIVE remaining-credit/quota number pulled from a
+     provider's own account API (Bright Data / twitterapi.io), on hover
+     (desktop) or long-press (mobile) of the badge above. Separate from
+     .nf-count, which is just the local "how many times tapped this month"
+     reminder -- this is the real, provider-reported balance. */
+  .usage-tip{
+    position:fixed; min-width:180px; max-width:230px;
+    background:var(--ink); color:var(--bg); font-size:10.5px; line-height:1.4; font-weight:500;
+    padding:7px 9px; border-radius:7px; box-shadow:0 6px 16px rgba(0,0,0,.28);
+    pointer-events:none; opacity:0; transform:translateY(3px); transition:opacity .12s, transform .12s;
+    z-index:9999; text-align:left; white-space:normal;
+  }
+  .usage-tip.show{ opacity:1; transform:translateY(0); }
+  .usage-tip b{ font-weight:800; }
+  .usage-tip .usage-tip-caveat{ display:block; margin-top:3px; opacity:.72; font-size:9.5px; }
   @keyframes nf-spin{ to{ transform:rotate(360deg); } }
   .news-float-body{flex:1; min-height:0; overflow-y:auto; padding:6px 0;}
   .news-float-foot{padding:7px 14px; font-size:10.5px; color:var(--ink-3); border-top:1px solid var(--border); flex-shrink:0;}
@@ -622,7 +637,7 @@
     <div class="news-float-actions">
       <button type="button" class="nf-btn" id="expertsRefreshBtn" title="Refresh">⟳</button>
       <a class="nf-btn" id="expertsApifyLink" href="https://console.apify.com/actors/runs" target="_blank" rel="noopener noreferrer" title="Check Apify run cost (Console → Runs)">💰</a>
-      <button type="button" class="nf-btn nf-btn-text" id="expertsBrightDataBtn" title="Optional: fetch Instagram via Bright Data instead of Apify — use this only if Apify's monthly credit is used up. Badge = taps this month.">BD</button>
+      <button type="button" class="nf-btn nf-btn-text" id="expertsBrightDataBtn" aria-label="Optional: fetch Instagram via Bright Data instead of Apify — use this only if Apify's monthly credit is used up. Hover (or long-press on mobile) for live Bright Data balance.">BD</button>
       <button type="button" class="nf-btn" id="expertsMinBtn" title="Minimize">–</button>
       <button type="button" class="nf-btn" id="expertsCloseBtn" title="Close">×</button>
     </div>
@@ -672,7 +687,7 @@
   <div class="news-float-head" id="xFloatHead">
     <span class="news-float-title">✕ Xpert's Tweets</span>
     <div class="news-float-actions">
-      <button type="button" class="nf-btn" id="xRefreshBtn" title="Refresh">⟳</button>
+      <button type="button" class="nf-btn" id="xRefreshBtn" aria-label="Refresh. Hover (or long-press on mobile) for live twitterapi.io balance.">⟳</button>
       <button type="button" class="nf-btn" id="xMinBtn" title="Minimize">–</button>
       <button type="button" class="nf-btn" id="xCloseBtn" title="Close">×</button>
     </div>
@@ -765,24 +780,72 @@
   }
 
   // Tracks "how many times has this specific optional/metered refresh
-  // button been tapped this calendar month" -- purely a local reminder so
-  // you can eyeball your own usage of a paid third-party API (Bright Data,
-  // twitterapi.io) at a glance. It is NOT a live quota pulled from either
-  // provider -- just a tap counter that resets itself at the start of each
-  // new month.
-  function bumpMonthlyCount(key){
-    const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-    const rec = (state.monthlyRefreshCounts && state.monthlyRefreshCounts[key]) || {month:"", count:0};
-    const count = rec.month === month ? rec.count + 1 : 1;
-    if(!state.monthlyRefreshCounts) state.monthlyRefreshCounts = {};
-    state.monthlyRefreshCounts[key] = {month, count};
-    persist();
-    return count;
+  // button been tapped this calendar month" so you can eyeball your own
+  // usage of a paid third-party API (Bright Data, twitterapi.io) at a
+  // glance. It is NOT a live quota pulled from either provider -- just a
+  // tap counter that resets itself at the start of each new month.
+  //
+  // This is synced server-side (via /count, backed by a small Vercel KV
+  // store) so the badge shows the SAME number whether you check the
+  // dashboard on your phone or your laptop -- a tap on one device shows up
+  // on the other the next time that device loads or taps the button.
+  // localStorage is kept too, purely as a fallback: if the server counter
+  // isn't set up yet, or the device is offline, the badge still works,
+  // it's just back to being per-device the way it always was.
+  function countBaseUrl(){
+    if(location.protocol === "http:" || location.protocol === "https:") return location.origin;
+    return null;
   }
-  function monthlyCount(key){
+  function localCount(key){
     const month = new Date().toISOString().slice(0, 7);
     const rec = (state.monthlyRefreshCounts && state.monthlyRefreshCounts[key]) || {month:"", count:0};
     return rec.month === month ? rec.count : 0;
+  }
+  function setLocalCount(key, count){
+    const month = new Date().toISOString().slice(0, 7);
+    if(!state.monthlyRefreshCounts) state.monthlyRefreshCounts = {};
+    state.monthlyRefreshCounts[key] = {month, count};
+    persist();
+  }
+  function monthlyCount(key){
+    return localCount(key);
+  }
+  // Increments the count for `key` and returns the new total. Tries the
+  // synced server-side counter first; falls back to the local-only tally
+  // if that's unreachable or not configured yet.
+  async function bumpMonthlyCount(key){
+    const base = countBaseUrl();
+    if(base){
+      try{
+        const res = await fetch(base + "/count?key=" + encodeURIComponent(key) + "&action=bump");
+        const data = await res.json().catch(()=>({}));
+        if(res.ok && typeof data.count === "number"){
+          setLocalCount(key, data.count);
+          return data.count;
+        }
+      }catch(e){ /* offline or route unreachable — fall through to local-only */ }
+    }
+    const month = new Date().toISOString().slice(0, 7);
+    const rec = (state.monthlyRefreshCounts && state.monthlyRefreshCounts[key]) || {month:"", count:0};
+    const count = rec.month === month ? rec.count + 1 : 1;
+    setLocalCount(key, count);
+    return count;
+  }
+  // Refreshes a button's badge from the synced server-side count, without
+  // incrementing anything — used on card open so a tap made on another
+  // device shows up here too. Silently leaves the existing (local) badge
+  // alone if the synced counter isn't reachable or configured.
+  async function syncMonthlyCountBadge(key, btn){
+    const base = countBaseUrl();
+    if(!base || !btn) return;
+    try{
+      const res = await fetch(base + "/count?key=" + encodeURIComponent(key));
+      const data = await res.json().catch(()=>({}));
+      if(res.ok && typeof data.count === "number"){
+        setLocalCount(key, data.count);
+        setCountBadge(btn, data.count);
+      }
+    }catch(e){ /* keep whatever the local badge already shows */ }
   }
   function setCountBadge(btn, count){
     if(!btn) return;
@@ -797,6 +860,98 @@
       btn.appendChild(badge);
     }
     badge.textContent = count > 99 ? "99+" : String(count);
+  }
+
+  // Wires a hover (desktop) / long-press (mobile) tooltip onto a metered
+  // refresh button, showing the LIVE remaining credit/quota that
+  // `fetchUsageFn` reports from the provider's own account API -- distinct
+  // from the local monthly tap counter above. `fetchUsageFn` is called at
+  // most once per hover/long-press (its result is cached for a few
+  // minutes so repeated hovers don't spend an extra request each time) and
+  // must resolve to a short display string already formatted for the
+  // tooltip (including the "doesn't include bonus credit" caveat line).
+  function attachUsageTooltip(btn, fetchUsageFn){
+    if(!btn) return;
+    // Appended to <body> and positioned with fixed coordinates (rather than
+    // nested absolutely inside the button) so it's never clipped by a
+    // card header's own overflow:hidden, regardless of which floating
+    // card the button lives in.
+    const tip = document.createElement("div");
+    tip.className = "usage-tip";
+    document.body.appendChild(tip);
+
+    function reposition(){
+      const rect = btn.getBoundingClientRect();
+      const tipRect = tip.getBoundingClientRect();
+      let left = rect.right - tipRect.width;
+      left = Math.min(Math.max(8, left), window.innerWidth - tipRect.width - 8);
+      let top = rect.top - tipRect.height - 7;
+      if(top < 8) top = rect.bottom + 7; // flip below if there's no room above
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+    }
+
+    let cache = null; // {text, at}
+    const CACHE_MS = 2 * 60 * 1000;
+    let loading = false;
+
+    async function ensureText(){
+      if(cache && (Date.now() - cache.at) < CACHE_MS) return cache.text;
+      if(loading) return "Checking…";
+      loading = true;
+      try{
+        const text = await fetchUsageFn();
+        cache = {text, at: Date.now()};
+        return text;
+      }catch(e){
+        return "Couldn't check usage right now.";
+      }finally{
+        loading = false;
+      }
+    }
+
+    function show(text){
+      tip.innerHTML = text;
+      tip.classList.add("show");
+      reposition();
+    }
+    function hide(){
+      tip.classList.remove("show");
+    }
+
+    async function showLive(){
+      show("Checking…");
+      const text = await ensureText();
+      // Only overwrite if still meant to be showing (not dismissed mid-fetch).
+      if(tip.classList.contains("show")) show(text);
+    }
+
+    // Desktop: plain hover.
+    btn.addEventListener("mouseenter", showLive);
+    btn.addEventListener("mouseleave", hide);
+
+    // Mobile: long-press shows it; a short tap still performs the normal
+    // click/refresh action as before. preventDefault on the long-press
+    // path stops that same touch from also firing a click.
+    let pressTimer = null;
+    let longPressed = false;
+    const LONG_PRESS_MS = 500;
+    btn.addEventListener("touchstart", (e)=>{
+      longPressed = false;
+      pressTimer = setTimeout(()=>{
+        longPressed = true;
+        showLive();
+      }, LONG_PRESS_MS);
+    }, {passive:true});
+    btn.addEventListener("touchend", (e)=>{
+      clearTimeout(pressTimer);
+      if(longPressed){
+        e.preventDefault();
+        setTimeout(hide, 2500);
+      }
+    });
+    btn.addEventListener("touchmove", ()=>{ clearTimeout(pressTimer); });
+    btn.addEventListener("touchcancel", ()=>{ clearTimeout(pressTimer); hide(); });
   }
 
   function toUsd(amount, currency){
@@ -1995,6 +2150,22 @@
     // ---------------------------------------------------------------------
     if(bdBtn){
       setCountBadge(bdBtn, monthlyCount("experts-brightdata"));
+      syncMonthlyCountBadge("experts-brightdata", bdBtn);
+
+      attachUsageTooltip(bdBtn, async ()=>{
+        const b = expertsBaseUrl();
+        if(!b) return "This card needs the hosted version of this dashboard.";
+        const res = await fetch(b + "/usage?provider=brightdata");
+        const data = await res.json().catch(()=>({}));
+        if(data.error){
+          return "Bright Data: " + data.error;
+        }
+        const bal = data.balance;
+        const line = (bal === null || bal === undefined)
+          ? "Bright Data: balance not reported."
+          : `Bright Data balance: <b>$${Number(bal).toFixed(2)}</b>`;
+        return line + `<span class="usage-tip-caveat">Paid/recharge balance only — doesn't include free-trial/bonus credit, so this can read low (even $0) while you're still mostly running on bonus credit.</span>`;
+      });
 
       const BD_AUTO_POLL_DELAY_MS = 10000;
       const BD_AUTO_POLL_MAX_ATTEMPTS = 12; // ~2 minutes of background checking
@@ -2009,7 +2180,7 @@
       async function checkBrightData(isAutoPoll){
         bdBtn.classList.add("spin");
         if(!isAutoPoll){
-          const count = bumpMonthlyCount("experts-brightdata");
+          const count = await bumpMonthlyCount("experts-brightdata");
           setCountBadge(bdBtn, count);
         }
         const base = expertsBaseUrl();
@@ -2138,6 +2309,7 @@
     applyOpenState();
     applyMinState();
     setCountBadge(refreshBtn, monthlyCount("xpert-tweets"));
+    syncMonthlyCountBadge("xpert-tweets", refreshBtn);
 
     minBtn.addEventListener("click", ()=>{ xf.minimized = !xf.minimized; applyMinState(); persist(); });
     closeBtn.addEventListener("click", ()=>{ xf.open = false; applyOpenState(); persist(); });
@@ -2243,7 +2415,7 @@
 
     async function loadTweets(){
       refreshBtn.classList.add("spin");
-      const count = bumpMonthlyCount("xpert-tweets");
+      const count = await bumpMonthlyCount("xpert-tweets");
       setCountBadge(refreshBtn, count);
       const base = xBaseUrl();
       if(!base){
@@ -2272,6 +2444,22 @@
     }
 
     refreshBtn.addEventListener("click", loadTweets);
+
+    attachUsageTooltip(refreshBtn, async ()=>{
+      const b = xBaseUrl();
+      if(!b) return "This card needs the hosted version of this dashboard.";
+      const res = await fetch(b + "/usage?provider=twitterapi");
+      const data = await res.json().catch(()=>({}));
+      if(data.error){
+        return "twitterapi.io: " + data.error;
+      }
+      const credits = data.recharge_credits;
+      const line = (credits === null || credits === undefined)
+        ? "twitterapi.io: credit balance not reported."
+        : `twitterapi.io credits: <b>${Number(credits).toLocaleString()}</b>`;
+      return line + `<span class="usage-tip-caveat">Paid/recharge credits only — doesn't include free-trial/bonus credit, so this can read low (even 0) while you're still mostly running on bonus credit.</span>`;
+    });
+
     if(xf.cache && xf.cache.payload){
       const age = Date.now() - (xf.cache.fetchedAt || 0);
       const mins = Math.floor(age / 60000);
