@@ -652,7 +652,7 @@
   <div class="news-float-head" id="expertsFloatHead">
     <span class="news-float-title">🧠 Crypto experts</span>
     <div class="news-float-actions">
-      <button type="button" class="nf-btn" id="expertsRefreshBtn" title="Refresh">⟳</button>
+      <button type="button" class="nf-btn" id="expertsRefreshBtn" aria-label="Refresh. Hover (or long-press on mobile) for live Apify usage.">⟳</button>
       <a class="nf-btn" id="expertsApifyLink" href="https://console.apify.com/actors/runs" target="_blank" rel="noopener noreferrer" title="Check Apify run cost (Console → Runs)">💰</a>
       <button type="button" class="nf-btn nf-btn-text" id="expertsBrightDataBtn" aria-label="Optional: fetch Instagram via Bright Data instead of Apify — use this only if Apify's monthly credit is used up. Hover (or long-press on mobile) for live Bright Data balance.">BD</button>
       <button type="button" class="nf-btn" id="expertsMinBtn" title="Minimize">–</button>
@@ -2124,6 +2124,8 @@
 
     async function loadExperts(){
       refreshBtn.classList.add("spin");
+      const count = await bumpMonthlyCount("experts-apify");
+      setCountBadge(refreshBtn, count);
       const base = expertsBaseUrl();
       if(!base){
         statusEl.textContent = "This card needs the hosted version of this dashboard.";
@@ -2169,6 +2171,28 @@
     // last-fetched posts are still sitting there after a page reload or
     // after closing and reopening the card.
     refreshBtn.addEventListener("click", loadExperts);
+    setCountBadge(refreshBtn, monthlyCount("experts-apify"));
+    syncMonthlyCountBadge("experts-apify", refreshBtn);
+    attachUsageTooltip(refreshBtn, async ()=>{
+      const b = expertsBaseUrl();
+      if(!b) return "This card needs the hosted version of this dashboard.";
+      const res = await fetch(b + "/usage?provider=apify");
+      const data = await res.json().catch(()=>({}));
+      if(data.error){
+        return "Apify: " + data.error;
+      }
+      const used = data.usage_usd;
+      const limit = data.limit_usd;
+      let line;
+      if(used === null || used === undefined){
+        line = "Apify: usage not reported.";
+      }else if(limit === null || limit === undefined){
+        line = `Apify usage this cycle: <b>$${Number(used).toFixed(2)}</b>`;
+      }else{
+        line = `Apify usage: <b>$${Number(used).toFixed(2)} / $${Number(limit).toFixed(2)}</b> free tier`;
+      }
+      return line + `<span class="usage-tip-caveat">Platform usage for this billing cycle, as reported by Apify's own account API — covers everything on your Apify account, not just this card's Instagram scrapes.</span>`;
+    });
     function renderCachedExperts(label){
       const age = Date.now() - (ef.cache.fetchedAt || 0);
       const mins = Math.floor(age / 60000);
