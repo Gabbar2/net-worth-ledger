@@ -8,25 +8,32 @@
 # per-file-is-a-function limit.
 #
 # ---------------------------------------------------------------------------
-# PART 1: live provider balance/credit check
+# PART 1: live provider balance/credit/usage check
 #   ?provider=twitterapi  -> twitterapi.io's own "my info" endpoint
 #   ?provider=brightdata  -> Bright Data's own "customer balance" endpoint
+#   ?provider=apify       -> Apify's own "user limits" endpoint (platform
+#                             usage this billing cycle vs. your plan's limit)
 #
 # Powers the small tooltip you get by hovering (desktop) or long-pressing
-# (mobile) the "BD" button on the Expert's card and the ⟳ button on the
-# Xpert's Tweets card. This is a read-only balance lookup; it never
-# triggers a scrape and never spends any of that balance itself.
+# (mobile) the ⟳ and "BD" buttons on the Expert's card and the ⟳ button on
+# the Xpert's Tweets card. This is a read-only balance/usage lookup; it
+# never triggers a scrape and never spends anything itself.
 #
-# Honest caveat: neither provider's balance API appears to include
-# promotional/bonus/free-trial credit in these numbers -- just the
-# recharge/paid balance -- so a number here can look lower (even "0")
-# compared to what the provider's own dashboard shows while you're still
-# mostly running on bonus credit. Treat this as a rough signal, not an
-# exact countdown, and the dashboard says so in the tooltip text itself.
+# Honest caveat: twitterapi.io and Bright Data's balance numbers appear to
+# exclude promotional/bonus/free-trial credit -- just the recharge/paid
+# balance -- so a number there can look lower (even "0") compared to what
+# the provider's own dashboard shows while you're still mostly running on
+# bonus credit. Apify's usage figure, by contrast, is overall platform
+# usage for the current billing cycle across your whole Apify account, not
+# scoped to just this card's Instagram scrapes. Treat all of these as a
+# rough signal, not an exact countdown, and the dashboard says so in the
+# tooltip text itself.
 #
 # Secrets used here are the SAME ones already set for the other routes --
-# this part adds no new environment variables:
-#   TWITTERAPI_IO_KEY, BRIGHTDATA_API_KEY
+# this part adds no required new environment variables:
+#   TWITTERAPI_IO_KEY, BRIGHTDATA_API_KEY, and for Apify either a
+#   dedicated APIFY_API_TOKEN or (reused automatically) the IG_THIRDPARTY_KEY
+#   that experts.py already has configured for its Apify-backed fallback.
 #
 # ---------------------------------------------------------------------------
 # PART 2: synced monthly tap counter
@@ -125,6 +132,50 @@ def _brightdata_usage():
     except Exception:
         return {"error": "Bright Data returned a non-JSON response"}
     return {"balance": data.get("balance"), "credit": data.get("credit")}
+
+
+def _apify_token():
+    # Prefer a dedicated token if one's been set up specifically for this;
+    # otherwise reuse the same one experts.py already has configured for
+    # its Apify-backed Instagram fallback (IG_THIRDPARTY_KEY), which this
+    # project's setup already has as "Bearer apify_api_...", so the
+    # "Bearer " prefix is stripped back off here since this call adds its
+    # own.
+    token = common.env("APIFY_API_TOKEN")
+    if token:
+        return token
+    raw = common.env("IG_THIRDPARTY_KEY")
+    if raw.lower().startswith("bearer "):
+        return raw[7:].strip()
+    return raw or None
+
+
+def _apify_usage():
+    token = _apify_token()
+    if not token:
+        return {"error": "Apify isn't configured (no APIFY_API_TOKEN, and IG_THIRDPARTY_KEY isn't set either)."}
+    status, body = _get("https://api.apify.com/v2/users/me/limits", {"Authorization": f"Bearer {token}"})
+    if status != 200:
+        snippet = body.decode("utf-8", "replace")[:160].strip()
+        return {"error": f"Apify returned HTTP {status}: {snippet}"}
+    try:
+        data = json.loads(body)
+    except Exception:
+        return {"error": "Apify returned a non-JSON response"}
+    d = data.get("data") or {}
+    current = d.get("current") or {}
+    limits = d.get("limits") or {}
+    usage_usd = current.get("monthlyUsageUsd")
+    limit_usd = limits.get("maxMonthlyUsageUsd")
+    if usage_usd is None and limit_usd is None:
+        # Apify's documented response shape for this endpoint may have
+        # changed, or your account returns it differently -- surface what
+        # keys actually came back instead of silently showing nothing, the
+        # same diagnostic approach used elsewhere in this proxy (tweets.py)
+        # when a provider's real response didn't match its own docs.
+        return {"error": "Apify's usage response had an unexpected shape.",
+                "raw_keys": list(d.keys())}
+    return {"usage_usd": usage_usd, "limit_usd": limit_usd}
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +362,8 @@ class handler(BaseHTTPRequestHandler):
             common.send_json(self, 200, _twitterapi_usage())
         elif provider == "brightdata":
             common.send_json(self, 200, _brightdata_usage())
+        elif provider == "apify":
+            common.send_json(self, 200, _apify_usage())
         elif sync_key:
             common.send_json(self, 200, _get_synced_payload(sync_key))
         elif key:
@@ -321,7 +374,7 @@ class handler(BaseHTTPRequestHandler):
                 common.send_json(self, 200, _get_count(key))
         else:
             common.send_json(self, 400, {
-                "error": "pass ?provider=twitterapi|brightdata for a balance check, "
+                "error": "pass ?provider=twitterapi|brightdata|apify for a balance check, "
                          "?key=<name>&action=get|bump for the tap counter, or "
                          "?syncKey=<name> for the cross-device data cache"
             })
