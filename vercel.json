@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/binance/:path*", "destination": "/api/binance/:path*" },
+    { "source": "/okx/orders/pending", "destination": "/api/okx/orders?type=pending" },
+    { "source": "/okx/orders/history", "destination": "/api/okx/orders?type=history" },
     { "source": "/okx/:path*", "destination": "/api/okx/:path*" },
     { "source": "/health", "destination": "/api/health" },
     { "source": "/news", "destination": "/api/news" },
