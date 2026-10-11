@@ -2247,10 +2247,17 @@
           return "Bright Data: " + data.error;
         }
         const bal = data.balance;
-        const line = (bal === null || bal === undefined)
-          ? "Bright Data: balance not reported."
+        const credit = data.credit;
+        const balLine = (bal === null || bal === undefined)
+          ? "Bright Data balance: not reported."
           : `Bright Data balance: <b>$${Number(bal).toFixed(2)}</b>`;
-        return line + `<span class="usage-tip-caveat">Paid/recharge balance only — doesn't include free-trial/bonus credit, so this can read low (even $0) while you're still mostly running on bonus credit.</span>`;
+        const creditLine = (credit === null || credit === undefined)
+          ? ""
+          : `<br>Trial/bonus credit: <b>$${Number(credit).toFixed(2)}</b>`;
+        const caveat = (credit === null || credit === undefined)
+          ? "Paid/recharge balance only — Bright Data's API doesn't report your trial/bonus credit separately, so this can read low (even $0) while you're still mostly running on bonus credit."
+          : "Bright Data bills in USD, not a credit count — there's no \"X credits left\" number to show, only these two dollar balances.";
+        return balLine + creditLine + `<span class="usage-tip-caveat">${caveat}</span>`;
       });
 
       const BD_AUTO_POLL_DELAY_MS = 10000;
