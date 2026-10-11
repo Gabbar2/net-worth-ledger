@@ -11,7 +11,8 @@
     { "source": "/experts-brightdata", "destination": "/api/experts_brightdata" },
     { "source": "/tweets", "destination": "/api/tweets" },
     { "source": "/usage", "destination": "/api/usage" },
-    { "source": "/count", "destination": "/api/usage" }
+    { "source": "/count", "destination": "/api/usage" },
+    { "source": "/sync", "destination": "/api/usage" }
   ],
   "functions": {
     "api/experts.py": { "maxDuration": 60 },
