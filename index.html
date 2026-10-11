@@ -348,6 +348,21 @@
   .cv-float.minimized{ height:auto; max-height:none; }
   .cv-float-body{ flex:1; min-height:0; display:flex; }
   .cv-widget-wrap{ flex:1; min-width:0; min-height:0; }
+  /* Shown instead of a silent blank space when TradingView's embedded
+     widget script fails to load -- most often an ad-blocker, a DNS-level
+     filter, or a VPN's ad-shield treating the widget's script domain as a
+     tracker, even on networks/devices where tradingview.com itself loads
+     fine directly. */
+  .cv-widget-fallback{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    height:100%; width:100%; padding:24px 20px; text-align:center; box-sizing:border-box;
+  }
+  .cv-widget-fallback p{ margin:0; font-size:12.5px; line-height:1.5; color:var(--ink-2); max-width:360px; }
+  .cv-widget-fallback a{
+    display:inline-block; padding:7px 14px; border-radius:8px; background:var(--focus); color:#fff;
+    font-size:12.5px; font-weight:600; text-decoration:none;
+  }
+  .cv-widget-fallback a:hover{ filter:brightness(1.08); }
   .cv-select{
     font-size:11px; padding:3px 4px; border-radius:6px; border:1px solid var(--border);
     background:var(--surface); color:var(--ink); max-width:92px; flex-shrink:0;
@@ -2622,6 +2637,11 @@
     // reopening the card doesn't leave it blank next to an active chart.
     searchInput.value = (cv.symbol.split(":")[1] || "").replace(/USDT$/, "");
 
+    // Bumped on every loadWidget() call so a stale load-failure check from
+    // a PREVIOUS widget (e.g. you switched views right before its timeout
+    // fired) never overwrites whatever is showing now.
+    let cvLoadToken = 0;
+
     function loadWidget(key){
       const w = CV_BY_KEY[key] || CV_WIDGETS[0];
       const cfg = typeof w.config === "function" ? w.config() : w.config;
@@ -2643,6 +2663,26 @@
       inner.style.cssText = `width:100%; height:${h}px;`;
       container.appendChild(inner);
       wrap.appendChild(container);
+
+      // Some ad-blockers, DNS-level filters, and VPN ad-shields treat
+      // TradingView's widget *script* domain (s3.tradingview.com) as a
+      // tracker and silently strip it, even on networks/devices where
+      // tradingview.com itself loads completely fine -- which otherwise
+      // just leaves this card permanently blank with no explanation. If
+      // nothing has actually rendered an iframe here after a few seconds,
+      // swap in a clear message plus a direct link to the same chart on
+      // TradingView's own site instead of staying silently empty.
+      const myToken = ++cvLoadToken;
+      function showLoadFailure(){
+        if(myToken !== cvLoadToken) return; // superseded by a newer loadWidget() call
+        if(container.querySelector("iframe")) return; // it did load, just slowly
+        wrap.innerHTML = `<div class="cv-widget-fallback">
+          <p>This embedded chart didn't load — most likely an ad-blocker, a DNS-level filter, or a VPN's ad-shield on this device/network is blocking TradingView's widget script, even though tradingview.com itself works fine.</p>
+          <a href="${url}" target="_blank" rel="noopener noreferrer">Open this chart on TradingView instead ↗</a>
+        </div>`;
+      }
+      setTimeout(showLoadFailure, 7000);
+
       // TradingView's widgets self-initialize off this script tag -- it has
       // to be a real <script> element appended to the DOM (not just HTML
       // text) for the browser to actually execute it and build the iframe.
@@ -2650,6 +2690,7 @@
       script.src = w.scriptSrc;
       script.async = true;
       script.text = JSON.stringify(cfg);
+      script.onerror = showLoadFailure;
       container.appendChild(script);
       wrap.dataset.loadedWidget = key;
     }
