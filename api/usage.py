@@ -215,6 +215,88 @@ def _bump_count(key):
     return {"count": new_val}
 
 
+# ---------------------------------------------------------------------------
+# Part 3: synced "last successful fetch" cache for the Expert's card and the
+# Xpert's Tweets card
+#
+#   GET  ?syncKey=<name>               -> {"payload": {...} | null, "error"?: "..."}
+#   POST ?syncKey=<name>   (JSON body) -> {"ok": true} or {"ok": false, "error": "..."}
+#
+# Without this, each card's "last-fetched posts" were cached only in that
+# one device's localStorage (via ef.cache / xf.cache on the dashboard side)
+# -- so a scrape done on your desktop never showed up on your phone until
+# you tapped that card's refresh button there too, spending another Apify/
+# Bright Data/twitterapi.io credit just to see the SAME data again. This
+# mirrors it into the same KV store as the tap counter above, so opening
+# the card on a second device shows the latest result automatically.
+#
+# The dashboard sends the exact same {payload, fetchedAt} shape it already
+# keeps in its own local cache, so this is a straight mirror, not a
+# separate format to maintain.
+# ---------------------------------------------------------------------------
+
+def _data_key(key):
+    safe_key = "".join(ch for ch in key.strip().lower() if ch.isalnum() or ch in "-_") or "unnamed"
+    return f"nwl:data:{safe_key}"
+
+
+def _kv_set_raw(key, value_str):
+    url = _kv_url().rstrip("/") + "/set/" + urllib.parse.quote(key, safe="")
+    req = urllib.request.Request(url, data=value_str.encode("utf-8"),
+                                  headers={"Authorization": f"Bearer {_kv_token()}"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except Exception as e:
+        return 599, json.dumps({"error": str(e)}).encode()
+
+
+def _get_synced_payload(key):
+    if not _kv_configured():
+        return {"payload": None, "error": _NOT_CONFIGURED_MSG}
+    status, body = _kv_call(["get", _data_key(key)])
+    if status != 200:
+        snippet = body.decode("utf-8", "replace")[:160].strip()
+        return {"payload": None, "error": f"Sync store returned HTTP {status}: {snippet}"}
+    try:
+        data = json.loads(body)
+    except Exception:
+        return {"payload": None, "error": "Sync store returned a non-JSON response"}
+    raw = data.get("result")
+    if raw is None:
+        return {"payload": None}
+    try:
+        return {"payload": json.loads(raw)}
+    except Exception:
+        return {"payload": None, "error": "Stored data was unreadable (corrupted or truncated)"}
+
+
+def _set_synced_payload(key, payload_obj):
+    if not _kv_configured():
+        return {"ok": False, "error": _NOT_CONFIGURED_MSG}
+    value_str = json.dumps(payload_obj)
+    # Keep an eye on size -- Upstash's free tier handles values well past
+    # what a few dozen posts' worth of JSON needs, but an unexpectedly huge
+    # payload shouldn't silently blow past that and start failing oddly.
+    if len(value_str.encode("utf-8")) > 900_000:
+        return {"ok": False, "error": "Payload too large to sync — skipped (this device's own local cache still works)."}
+    redis_key = _data_key(key)
+    status, body = _kv_set_raw(redis_key, value_str)
+    if status != 200:
+        snippet = body.decode("utf-8", "replace")[:160].strip()
+        return {"ok": False, "error": f"Sync store returned HTTP {status}: {snippet}"}
+    # Refresh on every successful write so actively-used cards never expire,
+    # while an abandoned one quietly ages out after ~60 days instead of
+    # sitting in the store forever.
+    try:
+        _kv_call(["expire", redis_key, "5184000"])
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         common.send_options(self)
@@ -223,11 +305,14 @@ class handler(BaseHTTPRequestHandler):
         qs = common.parse_query(self)
         provider = (qs.get("provider") or [""])[0]
         key = (qs.get("key") or [""])[0].strip()
+        sync_key = (qs.get("syncKey") or [""])[0].strip()
 
         if provider == "twitterapi":
             common.send_json(self, 200, _twitterapi_usage())
         elif provider == "brightdata":
             common.send_json(self, 200, _brightdata_usage())
+        elif sync_key:
+            common.send_json(self, 200, _get_synced_payload(sync_key))
         elif key:
             action = (qs.get("action") or ["get"])[0]
             if action == "bump":
@@ -237,5 +322,21 @@ class handler(BaseHTTPRequestHandler):
         else:
             common.send_json(self, 400, {
                 "error": "pass ?provider=twitterapi|brightdata for a balance check, "
-                         "or ?key=<name>&action=get|bump for the tap counter"
+                         "?key=<name>&action=get|bump for the tap counter, or "
+                         "?syncKey=<name> for the cross-device data cache"
             })
+
+    def do_POST(self):
+        qs = common.parse_query(self)
+        sync_key = (qs.get("syncKey") or [""])[0].strip()
+        if not sync_key:
+            common.send_json(self, 400, {"error": "pass ?syncKey=<name> with a JSON body"})
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        raw_body = self.rfile.read(length) if length else b""
+        try:
+            payload_obj = json.loads(raw_body) if raw_body else None
+        except Exception:
+            common.send_json(self, 400, {"error": "request body wasn't valid JSON"})
+            return
+        common.send_json(self, 200, _set_synced_payload(sync_key, payload_obj))
