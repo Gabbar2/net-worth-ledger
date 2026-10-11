@@ -847,6 +847,35 @@
       }
     }catch(e){ /* keep whatever the local badge already shows */ }
   }
+
+  // Mirrors a card's last-successful-fetch cache ({payload, fetchedAt}, the
+  // same shape already kept in ef.cache / xf.cache) to the server so a
+  // scrape done on one device shows up on another without spending a new
+  // Apify/Bright Data/twitterapi.io credit just to see the same data again.
+  // Both are best-effort: if the sync store isn't configured or isn't
+  // reachable, each device just keeps behaving exactly as it did before
+  // this feature existed (its own local cache only).
+  async function syncPushPayload(key, bundle){
+    const base = countBaseUrl();
+    if(!base) return;
+    try{
+      await fetch(base + "/sync?syncKey=" + encodeURIComponent(key), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(bundle)
+      });
+    }catch(e){ /* best-effort — a failed sync doesn't affect this device's own view */ }
+  }
+  async function syncPullPayload(key){
+    const base = countBaseUrl();
+    if(!base) return null;
+    try{
+      const res = await fetch(base + "/sync?syncKey=" + encodeURIComponent(key));
+      const data = await res.json().catch(()=>({}));
+      if(res.ok && data.payload && data.payload.payload) return data.payload;
+    }catch(e){ /* ignore — caller just keeps whatever it already has */ }
+    return null;
+  }
   function setCountBadge(btn, count){
     if(!btn) return;
     let badge = btn.querySelector(".nf-count");
@@ -2102,6 +2131,7 @@
         // until you next press ⟳ yourself.
         ef.cache = {payload, fetchedAt: now};
         persist();
+        syncPushPayload("experts-data", ef.cache);
       }catch(e){
         statusEl.textContent = "Couldn't load experts — tap ⟳ to retry.";
         statusEl.style.display = "block";
@@ -2122,13 +2152,28 @@
     // last-fetched posts are still sitting there after a page reload or
     // after closing and reopening the card.
     refreshBtn.addEventListener("click", loadExperts);
-    if(ef.cache && ef.cache.payload){
+    function renderCachedExperts(label){
       const age = Date.now() - (ef.cache.fetchedAt || 0);
       const mins = Math.floor(age / 60000);
       const ageLabel = mins < 1 ? "just now" : mins < 60 ? (mins + "m ago")
         : Math.floor(mins/60) < 24 ? (Math.floor(mins/60) + "h ago") : (Math.floor(mins/1440) + "d ago");
-      renderExpertsPayload(ef.cache.payload, "updated " + ageLabel + " (cached, not re-fetched)");
+      renderExpertsPayload(ef.cache.payload, "updated " + ageLabel + " (" + label + ")");
     }
+    if(ef.cache && ef.cache.payload){
+      renderCachedExperts("cached, not re-fetched");
+    }
+    // Pull whatever the synced store has and use it if it's newer than
+    // what's already showing -- this is what makes a Bright Data (or
+    // Apify) fetch done on another device show up here without tapping
+    // anything, instead of staying stuck on this device's own last fetch.
+    (async ()=>{
+      const remote = await syncPullPayload("experts-data");
+      if(remote && remote.payload && (!ef.cache || !ef.cache.fetchedAt || remote.fetchedAt > ef.cache.fetchedAt)){
+        ef.cache = remote;
+        persist();
+        renderCachedExperts("synced from another device");
+      }
+    })();
 
     // ---------------------------------------------------------------------
     // Optional, separate "BD" refresh — fetches Instagram posts via Bright
@@ -2230,6 +2275,7 @@
             renderExpertsPayload(merged, label);
             ef.cache = {payload: merged, fetchedAt: now};
             persist();
+            syncPushPayload("experts-data", ef.cache);
           }else{
             statusEl.textContent = (payload.notes || [])[0] || "Bright Data returned no posts this time.";
             statusEl.style.display = "block";
@@ -2435,6 +2481,7 @@
         renderXPayload(payload, label);
         xf.cache = {payload, fetchedAt: now};
         persist();
+        syncPushPayload("xpert-tweets-data", xf.cache);
       }catch(e){
         statusEl.textContent = "Couldn't load tweets — tap ⟳ to retry.";
         statusEl.style.display = "block";
@@ -2460,13 +2507,24 @@
       return line + `<span class="usage-tip-caveat">Paid/recharge credits only — doesn't include free-trial/bonus credit, so this can read low (even 0) while you're still mostly running on bonus credit.</span>`;
     });
 
-    if(xf.cache && xf.cache.payload){
+    function renderCachedTweets(label){
       const age = Date.now() - (xf.cache.fetchedAt || 0);
       const mins = Math.floor(age / 60000);
       const ageLabel = mins < 1 ? "just now" : mins < 60 ? (mins + "m ago")
         : Math.floor(mins/60) < 24 ? (Math.floor(mins/60) + "h ago") : (Math.floor(mins/1440) + "d ago");
-      renderXPayload(xf.cache.payload, "updated " + ageLabel + " (cached, not re-fetched)");
+      renderXPayload(xf.cache.payload, "updated " + ageLabel + " (" + label + ")");
     }
+    if(xf.cache && xf.cache.payload){
+      renderCachedTweets("cached, not re-fetched");
+    }
+    (async ()=>{
+      const remote = await syncPullPayload("xpert-tweets-data");
+      if(remote && remote.payload && (!xf.cache || !xf.cache.fetchedAt || remote.fetchedAt > xf.cache.fetchedAt)){
+        xf.cache = remote;
+        persist();
+        renderCachedTweets("synced from another device");
+      }
+    })();
   })();
 
   // ---------------------------------------------------------------------
